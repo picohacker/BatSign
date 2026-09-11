@@ -60,6 +60,16 @@ targets:
       - path: Tests/BatSignTests
     dependencies:
       - target: BatSign
+    settings:
+      base:
+        HEADER_SEARCH_PATHS: >
+          "$(SRCROOT)/Vendor/zsign/src"
+          "$(SRCROOT)/Vendor/zsign/src/common"
+          "$(SRCROOT)/Vendor/zsign/src/third-party/minizip"
+          "$(SRCROOT)/Vendor/zsign/src/third-party/zlib"
+          "$(SRCROOT)/Vendor/zsign/bridge"
+          "$(SRCROOT)/Vendor/openssl/include"
+          "$(SRCROOT)/Vendor/zstd/include"
 
 schemes:
   BatSign:
