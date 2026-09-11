@@ -38,36 +38,35 @@ ctx.drawRadialGradient(glow, startCenter: CGPoint(x: 512, y: 420), startRadius: 
 // CG y-axis is bottom-up, so flip: y' = 1024 - y.
 func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: 1024 - y) }
 
-func batPath() -> CGPath {
-    let p = CGMutablePath()
-    // Right wing, starting at the right ear tip.
-    p.move(to: pt(575, 330))
-    // Ear notch
-    p.addLine(to: pt(512, 362))
-    p.addLine(to: pt(449, 330))
-    // Head dome to left shoulder
-    p.addCurve(to: pt(430, 420), control1: pt(430, 352), control2: pt(422, 388))
-    // Left wing top edge → left wing tip
-    p.addCurve(to: pt(118, 358), control1: pt(330, 350), control2: pt(210, 322))
-    // Outer scallop (down and inward)
-    p.addCurve(to: pt(248, 560), control1: pt(196, 448), control2: pt(206, 512))
-    // Mid scallop
-    p.addCurve(to: pt(400, 520), control1: pt(300, 516), control2: pt(348, 472))
-    // Inner scallop → body
-    p.addCurve(to: pt(472, 470), control1: pt(448, 556), control2: pt(462, 512))
-    // Belly
-    p.addCurve(to: pt(552, 470), control1: pt(488, 500), control2: pt(536, 500))
-    // Mirror side back to right ear
-    p.addCurve(to: pt(594, 420), control1: pt(562, 512), control2: pt(576, 556))
-    p.addCurve(to: pt(806, 520), control1: pt(652, 470), control2: pt(676, 556))
-    p.addCurve(to: pt(824, 560), control1: pt(790, 472), control2: pt(808, 516))
-    p.addCurve(to: pt(906, 358), control1: pt(818, 512), control2: pt(828, 448))
-    p.addCurve(to: pt(594, 420), control1: pt(814, 322), control2: pt(694, 350))
-    // Right shoulder to ear tip
-    p.addCurve(to: pt(575, 330), control1: pt(602, 388), control2: pt(594, 352))
-    p.closeSubpath()
-    return p
-}
+    func batPath() -> CGPath {
+        let p = CGMutablePath()
+        // Left side authored; right side is its exact mirror (mx = 1024 - x).
+        p.move(to: pt(449, 318))              // left ear tip
+        p.addLine(to: pt(512, 356))           // head notch
+        p.addLine(to: pt(575, 318))           // right ear tip
+        p.addCurve(to: pt(598, 402), control1: pt(590, 344), control2: pt(598, 372))
+        // Right wing top edge → tip
+        p.addCurve(to: pt(912, 350), control1: pt(700, 336), control2: pt(816, 312))
+        // Outer scallop down + inward
+        p.addCurve(to: pt(788, 570), control1: pt(836, 448), control2: pt(826, 516))
+        // Mid scallop
+        p.addCurve(to: pt(624, 530), control1: pt(726, 522), control2: pt(676, 480))
+        // Inner scallop → body
+        p.addCurve(to: pt(556, 470), control1: pt(576, 566), control2: pt(564, 516))
+        // Belly
+        p.addCurve(to: pt(468, 470), control1: pt(532, 500), control2: pt(492, 500))
+        // Mirror: inner scallop out
+        p.addCurve(to: pt(400, 530), control1: pt(460, 516), control2: pt(448, 566))
+        // Mid scallop out
+        p.addCurve(to: pt(236, 570), control1: pt(348, 480), control2: pt(298, 522))
+        // Outer scallop up + out to left tip
+        p.addCurve(to: pt(112, 350), control1: pt(198, 516), control2: pt(188, 448))
+        // Left wing top → left shoulder → left ear tip
+        p.addCurve(to: pt(426, 402), control1: pt(208, 312), control2: pt(324, 336))
+        p.addCurve(to: pt(449, 318), control1: pt(426, 372), control2: pt(434, 344))
+        p.closeSubpath()
+        return p
+    }
 
 let glyph = batPath()
 ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 42,
