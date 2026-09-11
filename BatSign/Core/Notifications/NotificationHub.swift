@@ -100,7 +100,7 @@ final class NotificationHub: ObservableObject {
                                             content: content, trigger: nil)
         center.add(request) { error in
             if let error {
-                Logger.app.error("System notification failed: \(error.localizedDescription)")
+                BLog.app.error("System notification failed: \(error.localizedDescription)")
             }
         }
     }
@@ -110,7 +110,7 @@ final class NotificationHub: ObservableObject {
             DispatchQueue.main.async {
                 self.systemDeliveryEnabled = granted
                 if let error {
-                    Logger.app.error("Notification auth: \(error.localizedDescription)")
+                    BLog.app.error("Notification auth: \(error.localizedDescription)")
                 }
             }
         }

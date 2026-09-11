@@ -15,14 +15,18 @@ extension Color {
                   blue: Double(hex & 0xFF) / 255,
                   opacity: alpha)
     }
+}
 
-    static let batAmber = Color(hex: 0xFFC53D)
-    static let batAmberDeep = Color(hex: 0xFF9F0A)
-    static let ink = Color(hex: 0xF5F5F7)
-    static let inkDim = Color.white.opacity(0.62)
-    static let glassStroke = Color.white.opacity(0.14)
-    static let danger = Color(hex: 0xFF5D5D)
-    static let success = Color(hex: 0x4ADE80)
+/// Design tokens, exposed as ShapeStyle members so `.batAmber` etc. work in
+/// every `foregroundStyle`/`stroke`/gradient context.
+extension ShapeStyle where Self == Color {
+    static var batAmber: Color { Color(hex: 0xFFC53D) }
+    static var batAmberDeep: Color { Color(hex: 0xFF9F0A) }
+    static var ink: Color { Color(hex: 0xF5F5F7) }
+    static var inkDim: Color { Color.white.opacity(0.62) }
+    static var glassStroke: Color { Color.white.opacity(0.14) }
+    static var danger: Color { Color(hex: 0xFF5D5D) }
+    static var success: Color { Color(hex: 0x4ADE80) }
 }
 
 // MARK: - Glass surface

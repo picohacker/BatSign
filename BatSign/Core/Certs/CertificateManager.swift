@@ -199,52 +199,19 @@ final class CertificateManager: ObservableObject {
         var notBefore: Date?
         var notAfter: Date?
 
-        if let cert = first[kSecImportItemCertChain as String] as? [Any],
-           let leaf = cert.first as? SecCertificate {
+        if let chain = first[kSecImportItemCertChain as String] as? [Any],
+           let leafAny = chain.first {
+            let leaf = leafAny as! SecCertificate
             (commonName, organization, notBefore, notAfter) = Self.certificateFacts(leaf)
         }
         return (commonName, organization, notBefore, notAfter)
     }
 
-    /// Extracts subject/validity facts with defensive fallbacks across SDK variants.
+    /// Extracts subject/validity facts by walking the certificate DER
+    /// (the SecCertificate property APIs are macOS-only).
     static func certificateFacts(_ certificate: SecCertificate) -> (String?, String?, Date?, Date?) {
-        var commonName: String?
-        var organization: String?
-        var notBefore: Date?
-        var notAfter: Date?
-
-        if let summary = SecCertificateCopySubjectSummary(certificate) {
-            commonName = summary as String
-        }
-
-        var error: Unmanaged<CFError>?
-        if let values = SecCertificateCopyValues(certificate, nil, &error) as? [String: Any] {
-            organization = Self.propertyValue(values, oid: kSecOIDOrganizationName) as? String
-            if let start = Self.propertyValue(values, oid: kSecOIDX509V1ValidityNotBefore) {
-                notBefore = Self.asDate(start)
-            }
-            if let end = Self.propertyValue(values, oid: kSecOIDX509V1ValidityNotAfter) {
-                notAfter = Self.asDate(end)
-            }
-        }
-        return (commonName, organization, notBefore, notAfter)
-    }
-
-    private static func propertyValue(_ values: [String: Any], oid: CFString) -> Any? {
-        guard let entries = values[oid as String] as? [[String: Any]] else { return nil }
-        return entries.first?[kSecPropertyKeyValue as String]
-    }
-
-    private static func asDate(_ value: Any?) -> Date? {
-        switch value {
-        case let date as Date: return date
-        case let number as NSNumber: return Date(timeIntervalSince1970: number.doubleValue)
-        case let string as String:
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
-            formatter.timeZone = TimeZone(identifier: "GMT")
-            return formatter.date(from: string)
-        default: return nil
-        }
+        let data = SecCertificateCopyData(certificate) as Data
+        let facts = CertDER.facts(from: data)
+        return (facts.commonName, facts.organization, facts.notBefore, facts.notAfter)
     }
 }

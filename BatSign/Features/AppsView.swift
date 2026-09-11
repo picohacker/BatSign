@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AppsView: View {
     @EnvironmentObject private var appState: AppState

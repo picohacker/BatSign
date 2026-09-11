@@ -371,9 +371,4 @@ private final class EngineLogBuffer {
         return lines
     }
 }
-
-/// Bridge so the engine queue can resolve a certificate record by id
-/// without exposing the main-actor manager to background code.
-enum CertificateManagerHolder {
-    static let shared = CertificateManager()
-}
+// (CertificateManagerHolder lives in Core/KeepAlive/BackgroundKeeper.swift.)

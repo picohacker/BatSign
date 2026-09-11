@@ -140,9 +140,11 @@ extern "C" int batsign_sign_ipa(const char* in_ipa,
 	const bool bSHA256Only = true;
 
 	// 1. Init signing asset (parses p12 + provision profile).
+	// zsign loads identities through the pkey slot (-k), which accepts a p12;
+	// the cert slot is only for separate PEM certificates.
 	ZSignAsset zsa;
 	if (!zsa.Init(safe_str(cert_p12),
-				  string(),
+				  safe_str(cert_p12),
 				  safe_str(prov_profile),
 				  safe_str(entitlements_path),
 				  safe_str(password),

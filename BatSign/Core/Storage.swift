@@ -37,7 +37,7 @@ enum JSONStore {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            Logger.app.error("Failed to decode \(url.lastPathComponent): \(error.localizedDescription)")
+            BLog.app.error("Failed to decode \(url.lastPathComponent): \(error.localizedDescription)")
             return nil
         }
     }
@@ -47,7 +47,7 @@ enum JSONStore {
             let data = try JSONEncoder().encode(value)
             try data.write(to: url, options: [.atomic])
         } catch {
-            Logger.app.error("Failed to save \(url.lastPathComponent): \(error.localizedDescription)")
+            BLog.app.error("Failed to save \(url.lastPathComponent): \(error.localizedDescription)")
         }
     }
 }
