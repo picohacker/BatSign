@@ -115,7 +115,7 @@ struct DiscoverView: View {
                 ForEach(sourceManager.sources) { stored in
                     NavigationLink(value: SourceNavID(id: stored.id)) {
                         HStack(spacing: 12) {
-                            SourceIcon(url: stored.iconURL, tint: Color(tintColor: stored.tintColor))
+                            SourceIcon(url: stored.iconURL, tint: Color(tintColor: stored.tintColor) ?? .batAmber)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(stored.name)
                                     .font(.subheadline.weight(.semibold))
@@ -296,15 +296,9 @@ struct StoreAppIcon: View {
     var body: some View {
         ZStack {
             if let url = app.iconURL {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        placeholder
-                    }
-                } placeholder: {
+                RemoteImage(url: url) {
                     placeholder
-                }
+                    }
             } else {
                 placeholder
             }
@@ -332,13 +326,7 @@ struct SourceIcon: View {
     var body: some View {
         ZStack {
             if let url {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        fallback
-                    }
-                } placeholder: {
+                RemoteImage(url: url) {
                     fallback
                 }
             } else {

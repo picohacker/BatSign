@@ -90,15 +90,9 @@ struct StoreAppPageView: View {
                 .fill(LinearGradient(colors: [heroTint.opacity(0.55), heroTint.opacity(0.08), Color(hex: 0x0B0D14)],
                                      startPoint: .top, endPoint: .bottom))
             if let url = heroImageURL {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        heroPlaceholder
-                    }
-                } placeholder: {
+                RemoteImage(url: url) {
                     heroPlaceholder
-                }
+                    }
                 .overlay(LinearGradient(colors: [.clear, Color(hex: 0x0B0D14).opacity(0.9)],
                                         startPoint: .top, endPoint: .bottom))
             }
@@ -138,15 +132,9 @@ struct StoreAppPageView: View {
         let size: CGFloat = 84
         ZStack {
             if let iconURL = app.iconURL ?? storeInfo?.artworkURL {
-                AsyncImage(url: iconURL) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        iconFallback
-                    }
-                } placeholder: {
+                RemoteImage(url: iconURL) {
                     iconFallback
-                }
+                    }
             } else {
                 iconFallback
             }
@@ -288,13 +276,7 @@ struct StoreAppPageView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(Array(urls.enumerated()), id: \.offset) { _, url in
-                            AsyncImage(url: url) { phase in
-                                if let image = phase.image {
-                                    image.resizable().scaledToFill()
-                                } else {
-                                    screenshotPlaceholder
-                                }
-                            } placeholder: {
+                            RemoteImage(url: url) {
                                 screenshotPlaceholder
                             }
                             .frame(width: 178, height: 316)

@@ -268,7 +268,7 @@ struct SourceFileView: View {
                 makeExport(data)
             } else {
                 info = "Image could not be decoded (or is too large to preview)."
-                makeExport(try? reader.readData(entry) ?? Data())
+                makeExport((try? reader.readData(entry)) ?? Data())
             }
         case .plist:
             if let data = try? reader.readData(entry), data.count < 2 * 1024 * 1024 {
@@ -305,7 +305,7 @@ struct SourceFileView: View {
             }
         case .binary:
             info = Self.binarySummary(entry)
-            makeExport(try? reader.readData(entry) ?? Data())
+            makeExport((try? reader.readData(entry)) ?? Data())
         }
     }
 
