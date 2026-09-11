@@ -47,8 +47,8 @@ targets:
           "$(SRCROOT)/Vendor/openssl/include"
           "$(SRCROOT)/Vendor/zstd/include"
         LIBRARY_SEARCH_PATHS: >
-          "$(SRCROOT)/Vendor/openssl/lib"
-          "$(SRCROOT)/Vendor/zstd/lib"
+          "$(SRCROOT)/Vendor/openssl/$(PLATFORM_NAME)"
+          "$(SRCROOT)/Vendor/zstd/$(PLATFORM_NAME)"
         OTHER_LDFLAGS: "-lcrypto -lz -lzstd"
         DEAD_CODE_STRIPPING: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO

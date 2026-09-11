@@ -1,37 +1,59 @@
 #!/bin/bash
-# Builds libzstd (static) for iOS arm64 — used to unpack .deb tweaks whose
-# data.tar is zstd-compressed (the dpkg default since Debian 11).
+# Builds libzstd (static) for iOS device and simulator — used to unpack .deb
+# tweaks whose data.tar is zstd-compressed (dpkg default since Debian 11).
+#
+# Usage: build-zstd.sh [iphoneos|iphonesimulator|all]
 set -euo pipefail
 
 ZSTD_VERSION="${ZSTD_VERSION:-1.5.6}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/Vendor/zstd"
+VENDOR="$ROOT/Vendor/zstd"
+PLATFORM="${1:-all}"
 
-if [ -f "$OUT/lib/libzstd.a" ]; then
-  echo "[zstd] already built at $OUT — skipping"
-  exit 0
-fi
+build_one() {
+  local sdk="$1" outdir="$2" minos_flag="$3"
+  local out="$VENDOR/$outdir"
+  if [ -f "$out/libzstd.a" ]; then
+    echo "[zstd] $outdir already built — skipping"
+    return
+  fi
+  echo "[zstd] building zstd ${ZSTD_VERSION} for $sdk"
 
-echo "[zstd] building zstd ${ZSTD_VERSION} for iOS arm64"
+  local sdkpath
+  sdkpath="$(xcrun -sdk "$sdk" --show-sdk-path)"
 
-SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
-WORK="$(mktemp -d /tmp/batsign-zstd.XXXXXX)"
-cleanup() { rm -rf "$WORK"; }
-trap cleanup EXIT
+  local work
+  work="$(mktemp -d /tmp/batsign-zstd.XXXXXX)"
+  trap 'rm -rf "$work"' RETURN
 
-TARBALL="$WORK/zstd-${ZSTD_VERSION}.tar.gz"
-URL="https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}/zstd-${ZSTD_VERSION}.tar.gz"
-echo "[zstd] downloading ${URL}"
-curl -sSL --retry 3 --retry-delay 5 -o "$TARBALL" "$URL"
-tar -xzf "$TARBALL" -C "$WORK"
-cd "$WORK/zstd-${ZSTD_VERSION}"
+  curl -sSL --retry 3 --retry-delay 5 -o "$work/zstd.tar.gz" \
+    "https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}/zstd-${ZSTD_VERSION}.tar.gz"
+  tar -xzf "$work/zstd.tar.gz" -C "$work"
+  cd "$work/zstd-${ZSTD_VERSION}"
 
-make -C lib lib-release -j"$(sysctl -n hw.ncpu)" \
-  CC="$(xcrun -sdk iphoneos -f clang)" \
-  CFLAGS="-arch arm64 -isysroot ${SDK} -miphoneos-version-min=17.0 -O2"
+  make -C lib lib-release -j"$(sysctl -n hw.ncpu)" \
+    CC="$(xcrun -sdk "$sdk" -f clang)" \
+    CFLAGS="-arch arm64 -isysroot ${sdkpath} ${minos_flag} -O2"
 
-mkdir -p "$OUT/lib" "$OUT/include"
-cp lib/libzstd.a "$OUT/lib/libzstd.a"
-cp lib/zstd.h lib/zstd_errors.h lib/zdict.h "$OUT/include/"
+  mkdir -p "$out/include"
+  cp lib/libzstd.a "$out/libzstd.a"
+  cp lib/zstd.h lib/zstd_errors.h lib/zdict.h "$out/include/"
+  echo "[zstd] done → $out/libzstd.a ($(du -h "$out/libzstd.a" | cut -f1))"
+}
 
-echo "[zstd] done → $OUT/lib/libzstd.a ($(du -h "$OUT/lib/libzstd.a" | cut -f1))"
+case "$PLATFORM" in
+  iphoneos)
+    build_one iphoneos iphoneos "-miphoneos-version-min=16.0"
+    ;;
+  iphonesimulator)
+    build_one iphonesimulator iphonesimulator "-miphonesimulator-version-min=16.0"
+    ;;
+  all)
+    build_one iphoneos iphoneos "-miphoneos-version-min=16.0"
+    build_one iphonesimulator iphonesimulator "-miphonesimulator-version-min=16.0"
+    ;;
+  *)
+    echo "unknown platform: $PLATFORM" >&2
+    exit 1
+    ;;
+esac

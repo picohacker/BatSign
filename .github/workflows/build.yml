@@ -30,23 +30,27 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Cache OpenSSL (iOS arm64)
+      - name: Cache OpenSSL (device + simulator)
         uses: actions/cache@v4
         with:
           path: Vendor/openssl
-          key: openssl-ios64-${{ runner.os }}-${{ hashFiles('scripts/build-openssl.sh') }}
+          key: openssl-all-${{ runner.os }}-${{ hashFiles('scripts/build-openssl.sh') }}
 
-      - name: Build OpenSSL for iOS
-        run: ./scripts/build-openssl.sh
+      - name: Build OpenSSL (device + simulator)
+        run: |
+          ./scripts/build-openssl.sh iphoneos
+          ./scripts/build-openssl.sh iphonesimulator
 
-      - name: Cache zstd (iOS arm64)
+      - name: Cache zstd (device + simulator)
         uses: actions/cache@v4
         with:
           path: Vendor/zstd
-          key: zstd-ios64-${{ runner.os }}-${{ hashFiles('scripts/build-zstd.sh') }}
+          key: zstd-all-${{ runner.os }}-${{ hashFiles('scripts/build-zstd.sh') }}
 
-      - name: Build zstd for iOS
-        run: ./scripts/build-zstd.sh
+      - name: Build zstd (device + simulator)
+        run: |
+          ./scripts/build-zstd.sh iphoneos
+          ./scripts/build-zstd.sh iphonesimulator
 
       - name: Generate app icon
         run: swift scripts/make-icon.swift
