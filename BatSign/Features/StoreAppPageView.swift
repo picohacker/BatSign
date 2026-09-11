@@ -478,10 +478,7 @@ struct StoreAppPageView: View {
     // MARK: Helpers
 
     static func compact(_ value: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .compact
-        formatter.maximumFractionDigits = 1
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        value.formatted(.number.notation(.compactName).precision(.fractionLength(1)))
     }
 }
 

@@ -65,6 +65,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee test.log | tail -25
 
+      - name: Upload test log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
+          if-no-files-found: ignore
+
       - name: Compile app (unsigned, device)
         run: |
           set -o pipefail

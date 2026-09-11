@@ -66,8 +66,8 @@ struct SettingsView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(.batAmber)
                                 Spacer()
-                                Image(systemName: systemDeliveryEnabled ? "checkmark.circle.fill" : "bell.slash")
-                                    .foregroundStyle(systemDeliveryEnabled ? .success : .white.opacity(0.4))
+                                Image(systemName: notificationHub.systemDeliveryEnabled ? "checkmark.circle.fill" : "bell.slash")
+                                    .foregroundStyle(notificationHub.systemDeliveryEnabled ? .success : .white.opacity(0.4))
                             }
                         }
                     }

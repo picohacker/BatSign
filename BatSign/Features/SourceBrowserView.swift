@@ -273,7 +273,7 @@ struct SourceFileView: View {
         case .plist:
             if let data = try? reader.readData(entry), data.count < 2 * 1024 * 1024 {
                 if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-                   let xml = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: [.prettyPrinted]),
+                   let xml = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0),
                    let str = String(data: xml, encoding: .utf8) {
                     text = str
                     makeExport(xml)
