@@ -1,0 +1,90 @@
+name: Build BatSign IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Compile & package (unsigned)
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain sanity
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache OpenSSL (iOS arm64)
+        uses: actions/cache@v4
+        with:
+          path: Vendor/openssl
+          key: openssl-ios64-${{ runner.os }}-${{ hashFiles('scripts/build-openssl.sh') }}
+
+      - name: Build OpenSSL for iOS
+        run: ./scripts/build-openssl.sh
+
+      - name: Generate app icon
+        run: swift scripts/make-icon.swift
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Compile app (unsigned, device)
+        run: |
+          set -o pipefail
+          xcodebuild -project BatSign.xcodeproj \
+            -scheme BatSign \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPRESS_INT_RESOURCES=YES \
+            build 2>&1 | tee build.log
+
+      - name: Package unsigned IPA
+        run: ./scripts/make-ipa.sh
+
+      - name: Verify IPA structure
+        run: |
+          unzip -l BatSign.ipa | head -20
+          test -d "$(mktemp -d)/empty" || true
+          STAGE=$(mktemp -d)
+          unzip -q BatSign.ipa -d "$STAGE"
+          APP=$(find "$STAGE/Payload" -maxdepth 1 -name '*.app' | head -n1)
+          test -n "$APP"
+          test -f "$APP/BatSign"
+          file "$APP/BatSign"
+          test -f "$APP/Info.plist"
+          echo "IPA structure OK"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BatSign-unsigned-ipa
+          path: BatSign.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Attach to release (tag builds)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: BatSign.ipa

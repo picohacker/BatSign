@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+*.xcuserstate
+xcuserdata/
+*.xcodeproj
+
+# Generated OpenSSL build (fetched+compiled by CI)
+Vendor/openssl/
+
+# Generated icon (CI regenerates)
+BatSign/Assets.xcassets/AppIcon.appiconset/icon_1024.png
+
+# Artifacts
+*.ipa
+build.log

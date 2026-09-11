@@ -1,0 +1,7 @@
+MIT License
+
+Copyright (c) 2026 BatSign contributors
+
+Code under this repository is MIT licensed. Vendored third-party code keeps
+its own license: the zsign engine (Vendor/zsign) is MIT, OpenSSL is
+Apache-2.0, and minizip/zlib are zlib-licensed.
