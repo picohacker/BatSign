@@ -90,6 +90,10 @@ enum CertificateError: LocalizedError, Equatable {
 
 // Main-thread API: SwiftUI drives every call site.
 final class CertificateManager: ObservableObject {
+    /// Single shared instance — the app, engine queue and background keeper
+    /// must all observe the same certificate store.
+    static let shared = CertificateManager()
+
     @Published private(set) var certificates: [CertificateRecord] = []
 
     init() {
