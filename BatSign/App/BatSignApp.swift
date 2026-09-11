@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UserDefaults.standard.register(defaults: [
             "preventSleep": true,
             "systemNotifications": true,
+            "autoSign": true,
             "zipLevel": 6,
         ])
 
@@ -55,10 +56,12 @@ struct BatSignApp: App {
 
     @StateObject private var appState = AppState()
     @StateObject private var library = AppLibrary()
-    @StateObject private var certManager = CertificateManager()
-    @StateObject private var jobQueue = JobQueue()
-    @StateObject private var notificationHub = NotificationHub.shared
-    @StateObject private var sourceManager = SourceManager.shared
+    // Shared singletons: the signing engine, background keeper and UI must
+    // all observe the same stores — duplicate instances caused stale state.
+    @ObservedObject private var certManager = CertificateManager.shared
+    @ObservedObject private var jobQueue = JobQueue.shared
+    @ObservedObject private var notificationHub = NotificationHub.shared
+    @ObservedObject private var sourceManager = SourceManager.shared
 
     var body: some Scene {
         WindowGroup {

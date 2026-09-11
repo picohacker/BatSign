@@ -132,9 +132,18 @@ struct SignConfigSheet: View {
                 Haptics.tap()
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: adhoc ? "waveform.path" : "seal.fill")
-                        .font(.title3)
-                        .foregroundStyle(adhoc ? Color.white.opacity(0.5) : .batAmber)
+                    // Same visual identity as the picker rows: one logo everywhere.
+                    if adhoc {
+                        ZStack {
+                            Circle().fill(Color.white.opacity(0.10))
+                            Image(systemName: "signature")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                        .frame(width: 42, height: 42)
+                    } else {
+                        ExpiryRing(daysRemaining: selectedCert?.daysRemaining, size: 42)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         if adhoc {
                             Text("Ad-hoc signature")
@@ -232,7 +241,7 @@ struct SignConfigSheet: View {
         Button {
             startSigning()
         } label: {
-            Label(adhoc ? "Sign ad-hoc" : "Sign & Pack", systemImage: "signature")
+            Text("Sign")
         }
         .buttonStyle(PrimaryGlassButtonStyle())
     }
@@ -260,7 +269,7 @@ struct SignConfigSheet: View {
                         Haptics.tap()
                     } label: {
                         HStack {
-                            Image(systemName: "waveform.path")
+                            Image(systemName: "signature")
                             VStack(alignment: .leading) {
                                 Text("Ad-hoc (no certificate)")
                                     .font(.subheadline.weight(.semibold))
@@ -539,7 +548,14 @@ struct SignConfigSheet: View {
 
     private func presetDefaults() {
         if selectedCertID == nil {
-            selectedCertID = certManager.certificates.first?.id
+            // Auto-sign flow: prefer the last certificate the user signed with,
+            // falling back to the first available one — one tap to Sign.
+            let lastID = UUID(uuidString: UserDefaults.standard.string(forKey: "lastCertID") ?? "")
+            if let lastID, certManager.certificate(with: lastID) != nil {
+                selectedCertID = lastID
+            } else {
+                selectedCertID = certManager.certificates.first?.id
+            }
         }
         removeExtensions = app.hasExtensions
         removeWatch = app.hasWatchApp
@@ -640,8 +656,7 @@ struct SignConfigSheet: View {
             dylibNames: dylibs.enumerated().map { "\($0.offset)-\($0.element.lastPathComponent)" }
         )
 
-        let password = selectedCert.flatMap { certManager.password(for: $0) }
-        jobQueue.enqueue(app: app, cert: selectedCert, password: password,
+        jobQueue.enqueue(app: app, cert: selectedCert,
                          adhoc: adhoc, options: options, dylibs: dylibs,
                          iconURL: iconURL)
         dismiss()

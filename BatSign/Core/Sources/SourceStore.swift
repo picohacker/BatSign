@@ -174,6 +174,7 @@ final class SourceManager: ObservableObject {
     }
 
     func refresh(_ stored: StoredSource) async {
+        guard stored.url.scheme != "local" else { return } // imported file, nothing to fetch
         do {
             let source = try await fetchSource(stored.url)
             if let index = sources.firstIndex(where: { $0.id == stored.id }) {

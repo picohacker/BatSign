@@ -249,7 +249,7 @@ struct StatusChip: View {
         Label(status.label, systemImage: {
             switch status {
             case .queued: return "clock"
-            case .running: return "waveform.path"
+            case .running: return "gearshape.2"
             case .succeeded: return "checkmark.seal.fill"
             case .failed: return "xmark.octagon.fill"
             case .interrupted: return "pause.circle.fill"

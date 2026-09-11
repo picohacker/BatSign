@@ -47,29 +47,37 @@ final class BackgroundKeeper {
 
     private func handle(task: BGTask) {
         schedule() // keep the chain alive
+
+        // The expiration handler and the normal path can both fire; iOS
+        // treats a second setTaskCompleted as an error, so complete exactly once.
+        let completed = CompletionGuard()
         let work = Task { [weak self] in
             await self?.runMaintenance()
-            task.setTaskCompleted(success: true)
+            completed.run { task.setTaskCompleted(success: true) }
         }
         task.expirationHandler = {
             work.cancel()
-            task.setTaskCompleted(success: false)
+            completed.run { task.setTaskCompleted(success: false) }
         }
     }
 
     @MainActor
     private func runMaintenance() async {
-        let manager = CertificateManagerHolder.shared
-        NotificationHub.shared.checkCertificateExpiries(manager.certificates)
-        JobQueueHolder.shared.load() // pick up any state changes since launch
+        NotificationHub.shared.checkCertificateExpiries(CertificateManager.shared.certificates)
     }
 }
 
-/// Access points for non-UI code paths.
-enum CertificateManagerHolder {
-    static let shared = CertificateManager()
-}
+/// Thread-safe run-at-most-once helper.
+final class CompletionGuard {
+    private let lock = NSLock()
+    private var done = false
 
-enum JobQueueHolder {
-    static let shared = JobQueue()
+    func run(_ body: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !done {
+            done = true
+            body()
+        }
+    }
 }

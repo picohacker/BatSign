@@ -30,6 +30,7 @@ struct AppsView: View {
     @State private var selection = Set<UUID>()
     @State private var confirmBulkDelete = false
     @State private var showBulkConfig = false
+    @State private var showBulkExport = false
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 14)]
 
@@ -49,27 +50,62 @@ struct AppsView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    if selecting {
+                if selecting {
+                    Button {
                         selecting = false
                         selection.removeAll()
-                    } else {
-                        showImporter = true
-                    }
-                } label: {
-                    Image(systemName: selecting ? "xmark" : "plus")
-                }
-                .disabled(importing)
-            }
-            ToolbarItem(placement: .navigation) {
-                if !library.apps.isEmpty {
-                    Button {
-                        selecting.toggle()
-                        if !selecting { selection.removeAll() }
-                        Haptics.tap()
                     } label: {
-                        Text(selecting ? "Done" : "Select")
+                        Text("Done")
                     }
+                } else {
+                    Menu {
+                        Button {
+                            showImporter = true
+                        } label: {
+                            Label("Import IPA", systemImage: "square.and.arrow.down")
+                        }
+                        if !library.apps.isEmpty {
+                            Divider()
+                            Button {
+                                selecting = true
+                                Haptics.tap()
+                            } label: {
+                                Label("Select apps", systemImage: "checkmark.circle")
+                            }
+                            Button {
+                                selection = Set(library.apps.map(\.id))
+                                selecting = true
+                                Haptics.tap()
+                            } label: {
+                                Label("Select all", systemImage: "checkmark.circle.fill")
+                            }
+                            Button {
+                                guard !selection.isEmpty else { return }
+                                showBulkConfig = true
+                            } label: {
+                                Label("Bulk sign (\(selection.count))", systemImage: "signature")
+                            }
+                            .disabled(selection.isEmpty)
+                            Button {
+                                guard !selection.isEmpty else { return }
+                                showBulkExport = true
+                            } label: {
+                                Label("Bulk export (\(selection.count))", systemImage: "square.and.arrow.up")
+                            }
+                            .disabled(selection.isEmpty)
+                            Divider()
+                            Button(role: .destructive) {
+                                guard !selection.isEmpty else { return }
+                                confirmBulkDelete = true
+                            } label: {
+                                Label("Bulk delete (\(selection.count))", systemImage: "trash")
+                            }
+                            .disabled(selection.isEmpty)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .disabled(importing)
                 }
             }
         }
@@ -97,7 +133,9 @@ struct AppsView: View {
                     do {
                         let record = try await library.importApp(from: url)
                         Haptics.success()
-                        sheetApp = record
+                        if UserDefaults.standard.bool(forKey: "autoSign") {
+                            sheetApp = record
+                        }
                     } catch {
                         importError = error.localizedDescription
                         Haptics.error()
@@ -117,6 +155,9 @@ struct AppsView: View {
                 selecting = false
                 selection.removeAll()
             }
+        }
+        .sheet(isPresented: $showBulkExport) {
+            BulkExportSheet(appIDs: Array(selection))
         }
         .confirmationDialog("Delete \(selection.count) app\(selection.count == 1 ? "" : "s") and their files?",
                             isPresented: $confirmBulkDelete, titleVisibility: .visible) {
@@ -145,52 +186,30 @@ struct AppsView: View {
     private var grid: some View {
         LazyVGrid(columns: columns, spacing: 14) {
             ForEach(library.apps) { app in
-                Button {
-                    if selecting {
-                        toggleSelection(app.id)
-                        Haptics.tap()
-                    }
-                } label: {
-                    AppGridCard(app: app,
-                                icon: library.icon(for: app),
-                                signed: !jobQueue.jobs(forApp: app.id).filter { $0.status == .succeeded }.isEmpty,
-                                selecting: selecting,
-                                selected: selection.contains(app.id))
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
+                if selecting {
+                    // Selection mode: the whole card is one tap target.
                     Button {
-                        selecting = true
-                        selection = [app.id]
-                    } label: {
-                        Label("Select", systemImage: "checkmark.circle")
-                    }
-                }
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.45).onEnded { _ in
-                        selecting = true
-                        selection = [app.id]
-                        Haptics.tap()
-                    }
-                )
-                .onTapGesture {
-                    if selecting {
                         toggleSelection(app.id)
                         Haptics.tap()
+                    } label: {
+                        AppGridCard(app: app,
+                                    icon: library.icon(for: app),
+                                    signed: !jobQueue.jobs(forApp: app.id).filter { $0.status == .succeeded }.isEmpty,
+                                    selecting: true,
+                                    selected: selection.contains(app.id))
                     }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if selecting {
-                        Image(systemName: selection.contains(app.id) ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .foregroundStyle(selection.contains(app.id) ? .batAmber : .white.opacity(0.4))
-                            .padding(10)
+                    .buttonStyle(.plain)
+                } else {
+                    // Browse mode: a plain NavigationLink — one gesture, no stack.
+                    NavigationLink(value: AppNavID(id: app.id)) {
+                        AppGridCard(app: app,
+                                    icon: library.icon(for: app),
+                                    signed: !jobQueue.jobs(forApp: app.id).filter { $0.status == .succeeded }.isEmpty,
+                                    selecting: false,
+                                    selected: false)
                     }
+                    .buttonStyle(.plain)
                 }
-                .background(
-                    NavigationLink(value: AppNavID(id: app.id)) { EmptyView() }
-                        .opacity(selecting ? 0 : 1)
-                )
             }
         }
         .padding(18)
@@ -371,7 +390,6 @@ struct BulkSignConfigSheet: View {
     private func queueAll() {
         guard let certID = selectedCertID,
               let cert = certManager.certificate(with: certID) else { return }
-        let password = certManager.password(for: cert)
         var queued = 0
         for appID in appIDs {
             guard let app = library.app(with: appID) else { continue }
@@ -391,7 +409,7 @@ struct BulkSignConfigSheet: View {
                 weakInject: false,
                 dylibNames: []
             )
-            jobQueue.enqueue(app: app, cert: cert, password: password,
+            jobQueue.enqueue(app: app, cert: cert,
                              adhoc: false, options: options, dylibs: [], iconURL: nil)
             queued += 1
         }
@@ -402,6 +420,82 @@ struct BulkSignConfigSheet: View {
         Haptics.success()
         onQueued?()
         dismiss()
+    }
+}
+
+// MARK: - Bulk export
+
+struct BulkExportSheet: View {
+    @EnvironmentObject private var library: AppLibrary
+    @EnvironmentObject private var jobQueue: JobQueue
+    @Environment(\.dismiss) private var dismiss
+
+    let appIDs: [UUID]
+
+    /// Latest successful signed output per selected app, if any.
+    private var exports: [(app: AppRecord, url: URL)] {
+        appIDs.compactMap { id in
+            guard let app = library.app(with: id) else { return nil }
+            guard let job = jobQueue.jobs(forApp: id).first(where: { $0.status == .succeeded }),
+                  let url = jobQueue.outputURL(for: job) else { return nil }
+            return (app, url)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    if exports.isEmpty {
+                        EmptyState(icon: "square.and.arrow.up",
+                                   title: "Nothing to export yet",
+                                   message: "Only apps with a finished signed copy can be exported. Sign the selected apps first.")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(exports, id: \.app.id) { item in
+                                HStack(spacing: 12) {
+                                    AppIconView(icon: library.icon(for: item.app), fallbackSymbol: "app.gift")
+                                        .frame(width: 44, height: 44)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.app.name)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                            .lineLimit(1)
+                                        Text("signed.ipa · \(ByteCountFormatter.string(fromByteCount: item.app.sizeBytes, countStyle: .file))")
+                                            .font(.caption)
+                                            .foregroundStyle(.white.opacity(0.45))
+                                    }
+                                    Spacer()
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.success)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                if item.app.id != exports.last?.app.id {
+                                    Divider().overlay(.white.opacity(0.06))
+                                }
+                            }
+                        }
+                        .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
+
+                        ShareLink(items: exports.map(\.url)) {
+                            Label("Export \(exports.count) signed IPA\(exports.count == 1 ? "" : "s")", systemImage: "square.and.arrow.up.fill")
+                        }
+                        .buttonStyle(PrimaryGlassButtonStyle())
+                    }
+                }
+                .padding(18)
+            }
+            .background(AuroraBackground())
+            .navigationTitle("Bulk export")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 

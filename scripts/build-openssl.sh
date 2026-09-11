@@ -1,34 +1,32 @@
 #!/bin/bash
-# Builds libcrypto (OpenSSL) static libraries for iOS device and simulator —
-# required by the vendored zsign engine. Each platform lives in its own
-# directory so Xcode can pick the right slice via $(PLATFORM_NAME).
+# Builds libcrypto (OpenSSL) static libraries for iOS — required by the
+# vendored zsign engine.
 #
+# Layout (headers are platform-independent, libraries are not):
+#   Vendor/openssl/include/openssl/*.h        shared by all platforms
+#   Vendor/openssl/iphoneos/libcrypto.a
+#   Vendor/openssl/iphonesimulator/libcrypto.a
+#
+# Xcode selects the library slice via $(PLATFORM_NAME).
 # Usage: build-openssl.sh [iphoneos|iphonesimulator|all]
-# Env:
-#   OPENSSL_VERSION   pinned OpenSSL release (default 3.5.2, LTS)
-#   OPENSSL_NO_ASM=1  fall back to a pure-C build if assembly ever breaks
+#
+# Targets come from OpenSSL's own Configurations/15-ios.conf:
+#   device      -> ios64-xcrun              (xcrun -sdk iphoneos cc)
+#   simulator   -> iossimulator-arm64-xcrun (xcrun -sdk iphonesimulator cc)
 set -euo pipefail
 
 OPENSSL_VERSION="${OPENSSL_VERSION:-3.5.2}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR="$ROOT/Vendor/openssl"
-PLATFORM="${1:-all}"
 
 build_one() {
-  local sdk="$1" outdir="$2" configure_target="$3" extra_flags="$4"
-  local out="$VENDOR/$outdir"
-  if [ -f "$out/libcrypto.a" ]; then
+  local target="$1" outdir="$2"
+  local libdir="$VENDOR/$outdir"
+  if [ -f "$libdir/libcrypto.a" ]; then
     echo "[openssl] $outdir already built — skipping"
-    return
+    return 0
   fi
-  echo "[openssl] building OpenSSL ${OPENSSL_VERSION} for $sdk"
-
-  local sdkpath
-  sdkpath="$(xcrun -sdk "$sdk" --show-sdk-path)"
-  export CROSS_TOP="$(dirname "$(dirname "$sdkpath")")"
-  export CROSS_SDK="$(basename "$sdkpath")"
-  export CC="$(xcrun -sdk "$sdk" -f clang)"
-  export CFLAGS="-arch arm64 $extra_flags"
+  echo "[openssl] building OpenSSL ${OPENSSL_VERSION} for $target"
 
   local work
   work="$(mktemp -d /tmp/batsign-openssl.XXXXXX)"
@@ -44,31 +42,28 @@ build_one() {
     noasm_flag="no-asm"
   fi
 
-  ./Configure "$configure_target" $noasm_flag \
-    no-shared no-tests no-docs no-ui-console no-external-tests \
-    --prefix="$out"
+  # `-xcrun` targets locate the compiler themselves; no CROSS_TOP needed.
+  ./Configure "$target" $noasm_flag \
+    no-shared no-tests no-docs no-ui-console no-external-tests
 
   make -j "$(sysctl -n hw.ncpu)" build_libs
 
-  mkdir -p "$out/include"
-  cp libcrypto.a "$out/libcrypto.a"
-  cp -R include/openssl "$out/include/openssl"
-  echo "[openssl] done → $out/libcrypto.a ($(du -h "$out/libcrypto.a" | cut -f1))"
+  mkdir -p "$libdir"
+  cp libcrypto.a "$libdir/libcrypto.a"
+
+  # Headers are identical across platforms; publish once.
+  if [ ! -d "$VENDOR/include/openssl" ]; then
+    mkdir -p "$VENDOR/include"
+    cp -R include/openssl "$VENDOR/include/openssl"
+  fi
+
+  echo "[openssl] done → $libdir/libcrypto.a ($(du -h "$libdir/libcrypto.a" | cut -f1))"
 }
 
-case "$PLATFORM" in
-  iphoneos)
-    build_one iphoneos iphoneos ios64-cross "-mios-version-min=16.0"
-    ;;
-  iphonesimulator)
-    build_one iphonesimulator iphonesimulator ios64-cross "-target arm64-apple-ios16.0-simulator"
-    ;;
-  all)
-    build_one iphoneos iphoneos ios64-cross "-mios-version-min=16.0"
-    build_one iphonesimulator iphonesimulator ios64-cross "-target arm64-apple-ios16.0-simulator"
-    ;;
-  *)
-    echo "unknown platform: $PLATFORM" >&2
-    exit 1
-    ;;
+case "${1:-all}" in
+  iphoneos)          build_one ios64-xcrun iphoneos ;;
+  iphonesimulator)   build_one iossimulator-arm64-xcrun iphonesimulator ;;
+  all)               build_one ios64-xcrun iphoneos
+                     build_one iossimulator-arm64-xcrun iphonesimulator ;;
+  *) echo "unknown platform: $1 (expected iphoneos|iphonesimulator|all)" >&2; exit 1 ;;
 esac

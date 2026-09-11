@@ -74,10 +74,15 @@ struct SignOptions: Codable, Hashable {
 }
 
 final class JobQueue: ObservableObject {
+    /// Single shared instance — the UI and background maintenance both use it.
+    static let shared = JobQueue()
+
     @Published private(set) var jobs: [SignJob] = []
     @Published private(set) var activeJobID: UUID?
 
     private let engineQueue = DispatchQueue(label: "app.batsign.engine", qos: .userInitiated)
+    /// Main-thread flag preventing drain storms while a drain hop is in flight.
+    private var drainScheduled = false
 
     init() {
         load()
@@ -122,10 +127,10 @@ final class JobQueue: ObservableObject {
 
     // MARK: Enqueueing
 
-    /// Main thread only.
+    /// Main thread only. The certificate password is read from the Keychain
+    /// at execution time — it is never needed here.
     func enqueue(app: AppRecord,
                  cert: CertificateRecord?,
-                 password: String?,
                  adhoc: Bool,
                  options: SignOptions,
                  dylibs: [URL],
@@ -178,7 +183,10 @@ final class JobQueue: ObservableObject {
             jobs.insert(finalJob, at: 0)
             persist()
             Haptics.success()
-            run(job: finalJob, dylibs: storedDylibs, password: password)
+            if let cert {
+                UserDefaults.standard.set(cert.id.uuidString, forKey: "lastCertID")
+            }
+            scheduleDrain()
         } catch {
             NotificationHub.shared.post(kind: .jobFailed,
                                         title: "Could not queue \(app.name)",
@@ -188,7 +196,7 @@ final class JobQueue: ObservableObject {
     }
 
     /// Main thread only.
-    func rerun(jobID: UUID, password: String?) {
+    func rerun(jobID: UUID) {
         guard let job = job(with: jobID), job.status != .running, job.status != .queued else { return }
         var fresh = job
         fresh.status = .queued
@@ -198,9 +206,7 @@ final class JobQueue: ObservableObject {
         fresh.log = []
         fresh.startedAt = nil
         updateJob(fresh)
-
-        let dylibs = optionsDylibURLs(for: fresh)
-        run(job: fresh, dylibs: dylibs, password: password)
+        scheduleDrain()
     }
 
     func remove(jobID: UUID) {
@@ -242,8 +248,38 @@ final class JobQueue: ObservableObject {
 
     // MARK: Execution
 
-    private func run(job original: SignJob, dylibs: [URL], password: String?) {
-        guard var job = job(with: original.id) else { return }
+    // MARK: Scheduling (main thread)
+
+    /// Hops through the serial engine queue so drains are strictly ordered,
+    /// then starts the head queued job if nothing is executing.
+    /// Everything a job needs (cert ID, options, stored files) is persisted on
+    /// the job itself — there is no shared transient state to race on.
+    private func scheduleDrain() {
+        guard !drainScheduled else { return }
+        drainScheduled = true
+        engineQueue.async { [weak self] in
+            DispatchQueue.main.async { self?.drain() }
+        }
+    }
+
+    private func drain() {
+        drainScheduled = false
+        guard activeJobID == nil else { return }
+        while let next = jobs.first(where: { $0.status == .queued }) {
+            let cert = next.certID.flatMap { CertificateManager.shared.certificate(with: $0) }
+            let password = cert.flatMap { CertificateManager.shared.password(for: $0) }
+            let dylibs = optionsDylibURLs(for: next)
+            if startExecuting(next, cert: cert, password: password, dylibs: dylibs) {
+                return // executing; drain() runs again on completion
+            }
+            // Job vanished between listing and start — try the next one.
+        }
+    }
+
+    private func startExecuting(_ original: SignJob, cert: CertificateRecord?, password: String?, dylibs: [URL]) -> Bool {
+        guard var job = job(with: original.id), job.status == .queued else {
+            return false
+        }
         job.status = .running
         job.startedAt = Date()
         job.stage = "Preparing"
@@ -253,9 +289,11 @@ final class JobQueue: ObservableObject {
         // Capture everything the background pass needs by value.
         let jobID = job.id
         let appName = job.appName
-        let certRecord = original.certID.flatMap { CertificateManagerHolder.shared.certificate(with: $0) }
         let options = job.options
+        let adhoc = job.adhoc
 
+        // Keep the device awake only while the engine actually works; the
+        // token is ended in the defer below no matter how the job ends.
         let token: NSObjectProtocol? = UserDefaults.standard.bool(forKey: "preventSleep")
             ? ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
                                                     reason: "BatSign is signing an app")
@@ -266,7 +304,10 @@ final class JobQueue: ObservableObject {
                 if let token {
                     ProcessInfo.processInfo.endActivity(token)
                 }
-                DispatchQueue.main.async { self?.activeJobID = nil }
+                DispatchQueue.main.async { [weak self] in
+                    self?.activeJobID = nil
+                    self?.drain()
+                }
             }
             let engineLog = EngineLogBuffer { [weak self] fresh in
                 guard let self, var job = self.job(with: jobID) else { return }
@@ -282,9 +323,9 @@ final class JobQueue: ObservableObject {
             let request = SignRequest(
                 inputIPA: original.inputURL,
                 outputIPA: original.outputURL,
-                certificate: certRecord,
+                certificate: cert,
                 password: password,
-                adhoc: original.adhoc,
+                adhoc: adhoc,
                 entitlementsXML: options.entitlementsXML,
                 bundleID: options.bundleID,
                 version: options.version,
@@ -325,7 +366,6 @@ final class JobQueue: ObservableObject {
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.activeJobID = nil
                 guard var fresh = self.job(with: jobID) else { return }
                 fresh.finishedAt = Date()
                 fresh.log = finalLog
@@ -361,6 +401,7 @@ final class JobQueue: ObservableObject {
                 }
             }
         }
+        return true
     }
 }
 
@@ -398,4 +439,3 @@ private final class EngineLogBuffer {
         return lines
     }
 }
-// (CertificateManagerHolder lives in Core/KeepAlive/BackgroundKeeper.swift.)

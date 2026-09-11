@@ -13,7 +13,7 @@ struct ActivityView: View {
         ScrollView {
             VStack(spacing: 14) {
                 if jobQueue.jobs.isEmpty {
-                    EmptyState(icon: "waveform.path.ecg",
+                    EmptyState(icon: "tray.full",
                                title: "No signing activity",
                                message: "Queued and finished signing jobs appear here with full engine logs.")
                 } else {
@@ -223,10 +223,7 @@ struct JobDetailView: View {
 
                 if job.status == .failed || job.status == .interrupted {
                     Button {
-                        let password = job.certID.flatMap { id in
-                            certManager.certificate(with: id).flatMap { certManager.password(for: $0) }
-                        }
-                        jobQueue.rerun(jobID: job.id, password: password)
+                        jobQueue.rerun(jobID: job.id)
                     } label: {
                         Label("Re-run job", systemImage: "arrow.counterclockwise")
                             .frame(maxWidth: .infinity)

@@ -5,7 +5,9 @@
 BatSign signs `.ipa` files directly on your iPhone. No servers, no uploads, no accounts:
 your certificates and your apps never leave your device.
 
-> **Status: v1.3.0** — the latest build is compiled automatically by GitHub Actions.
+> **Status: v1.0.0** — builds are compiled automatically by GitHub Actions and
+> released only after the full pipeline is green (compile + simulator unit tests
+> + packaging verification).
 > Grab the unsigned IPA from [Releases](../../releases) or the *Actions → artifacts* tab.
 
 ---

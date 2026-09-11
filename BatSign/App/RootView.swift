@@ -29,7 +29,7 @@ struct RootView: View {
                     .tag(AppState.Tab.certs)
 
                 NavigationStack { ActivityView() }
-                    .tabItem { Label("Jobs", systemImage: "waveform.path.ecg") }
+                    .tabItem { Label("Jobs", systemImage: "tray.full") }
                     .badge(notificationHub.unreadCount)
                     .tag(AppState.Tab.activity)
 

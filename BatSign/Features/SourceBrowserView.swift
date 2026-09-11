@@ -24,6 +24,7 @@ struct SourceBrowserView: View {
 
     @State private var entries: [ZipEntry] = []
     @State private var loadFailed = false
+    @State private var loadErrorMessage: String?
     @State private var currentPath = ""
 
     var body: some View {
@@ -31,7 +32,7 @@ struct SourceBrowserView: View {
             if loadFailed {
                 EmptyState(icon: "archivebox",
                            title: "Couldn't read this IPA",
-                           message: "The archive could not be opened for browsing.")
+                           message: loadErrorMessage ?? "The archive could not be opened for browsing.")
             } else {
                 List {
                     if !currentPath.isEmpty {
@@ -99,12 +100,19 @@ struct SourceBrowserView: View {
     }
 
     private func load() {
-        guard entries.isEmpty, let reader = try? ZipReader(url: app.fileURL) else {
-            loadFailed = entries.isEmpty
-            return
+        // Load once; re-appears after navigation must not reset state.
+        guard entries.isEmpty, !loadFailed else { return }
+        do {
+            let reader = try ZipReader(url: app.fileURL)
+            entries = reader.entries
+            if entries.isEmpty {
+                loadFailed = true
+                loadErrorMessage = "The archive contains no entries."
+            }
+        } catch {
+            loadFailed = true
+            loadErrorMessage = error.localizedDescription
         }
-        entries = reader.entries
-        loadFailed = reader.entries.isEmpty
     }
 
     // MARK: Hierarchy
@@ -304,8 +312,16 @@ struct SourceFileView: View {
                 info = "File too large to preview (1 MB limit)."
             }
         case .binary:
-            info = Self.binarySummary(entry)
-            makeExport((try? reader.readData(entry)) ?? Data())
+            if let data = try? reader.readData(entry) {
+                if let macho = MachOReader.info(from: data) {
+                    info = Self.binarySummary(entry, macho: macho)
+                } else {
+                    info = Self.binarySummary(entry, macho: nil)
+                }
+                makeExport(data)
+            } else {
+                info = "File too large to inspect (512 MB in-memory limit)."
+            }
         }
     }
 
@@ -337,9 +353,17 @@ struct SourceFileView: View {
         return lines.joined(separator: "\n")
     }
 
-    private static func binarySummary(_ entry: ZipEntry) -> String {
+    private static func binarySummary(_ entry: ZipEntry, macho: MachOInfo?) -> String {
         var lines: [String] = []
-        lines.append("Type:            binary / opaque resource")
+        if let macho {
+            lines.append("Type:            \(macho.fileType.rawValue)")
+            lines.append("Architecture:    \(macho.architecture)")
+            if let installName = macho.installName {
+                lines.append("Install name:    \(installName)")
+            }
+        } else {
+            lines.append("Type:            opaque resource (not a Mach-O)")
+        }
         lines.append("Compressed:      \(ByteCountFormatter.string(fromByteCount: Int64(entry.compressedSize), countStyle: .file))")
         lines.append("Uncompressed:    \(ByteCountFormatter.string(fromByteCount: Int64(entry.uncompressedSize), countStyle: .file))")
         lines.append("Method:          \(entry.method == 0 ? "stored" : "deflate")")

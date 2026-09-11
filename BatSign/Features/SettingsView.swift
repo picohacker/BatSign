@@ -13,6 +13,7 @@ struct SettingsView: View {
 
     @AppStorage("preventSleep") private var preventSleep = true
     @AppStorage("systemNotifications") private var systemNotifications = true
+    @AppStorage("autoSign") private var autoSign = true
     @AppStorage("zipLevel") private var zipLevel = 6
 
     @State private var version = ""
@@ -29,6 +30,10 @@ struct SettingsView: View {
                         GlassToggle(title: "Keep device awake while signing",
                                     subtitle: "Prevents mid-sign suspension on large apps",
                                     isOn: $preventSleep)
+                        Divider().overlay(.white.opacity(0.08))
+                        GlassToggle(title: "Auto-sign after import",
+                                    subtitle: "Opens the Sign sheet immediately — SignOS-style fast flow",
+                                    isOn: $autoSign)
                         Divider().overlay(.white.opacity(0.08))
                         VStack(alignment: .leading, spacing: 8) {
                             Text("IPA packing")
@@ -53,7 +58,7 @@ struct SettingsView: View {
                 VStack(spacing: 6) {
                     SectionHeader(title: "Notifications")
                     VStack(spacing: 14) {
-                        GlassToggle(title: "System notifications",
+                        GlassToggle(title: "Notifications",
                                     subtitle: "Instant banners, even while BatSign is open",
                                     isOn: $systemNotifications)
                         Divider().overlay(.white.opacity(0.08))
@@ -94,7 +99,7 @@ struct SettingsView: View {
                 VStack(spacing: 6) {
                     SectionHeader(title: "About")
                     VStack(spacing: 0) {
-                        InfoRow(label: "Version", value: version.isEmpty ? "1.3.0" : version)
+                        InfoRow(label: "Version", value: version.isEmpty ? "1.0.0" : version)
                         Divider().overlay(.white.opacity(0.08))
                         InfoRow(label: "Signing engine", value: "zsign (vendored, MIT)")
                         Divider().overlay(.white.opacity(0.08))
@@ -116,7 +121,7 @@ struct SettingsView: View {
         .background(.clear)
         .toolbarBackground(.hidden, for: .navigationBar)
         .onAppear {
-            version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3.0"
+            version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         }
         .onChange(of: systemNotifications) { _, enabled in
             notificationHub.systemDeliveryEnabled = enabled

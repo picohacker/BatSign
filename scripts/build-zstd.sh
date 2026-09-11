@@ -1,21 +1,26 @@
 #!/bin/bash
-# Builds libzstd (static) for iOS device and simulator — used to unpack .deb
-# tweaks whose data.tar is zstd-compressed (dpkg default since Debian 11).
+# Builds libzstd (static) for iOS — used to unpack .deb tweaks whose data.tar
+# is zstd-compressed (the dpkg default since Debian 11).
 #
+# Layout:
+#   Vendor/zstd/include/*.h                 shared by all platforms
+#   Vendor/zstd/iphoneos/libzstd.a
+#   Vendor/zstd/iphonesimulator/libzstd.a
+#
+# Xcode selects the library slice via $(PLATFORM_NAME).
 # Usage: build-zstd.sh [iphoneos|iphonesimulator|all]
 set -euo pipefail
 
 ZSTD_VERSION="${ZSTD_VERSION:-1.5.6}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR="$ROOT/Vendor/zstd"
-PLATFORM="${1:-all}"
 
 build_one() {
-  local sdk="$1" outdir="$2" minos_flag="$3"
-  local out="$VENDOR/$outdir"
-  if [ -f "$out/libzstd.a" ]; then
+  local sdk="$1" outdir="$2" minflag="$3"
+  local libdir="$VENDOR/$outdir"
+  if [ -f "$libdir/libzstd.a" ]; then
     echo "[zstd] $outdir already built — skipping"
-    return
+    return 0
   fi
   echo "[zstd] building zstd ${ZSTD_VERSION} for $sdk"
 
@@ -33,27 +38,23 @@ build_one() {
 
   make -C lib lib-release -j"$(sysctl -n hw.ncpu)" \
     CC="$(xcrun -sdk "$sdk" -f clang)" \
-    CFLAGS="-arch arm64 -isysroot ${sdkpath} ${minos_flag} -O2"
+    CFLAGS="-arch arm64 -isysroot ${sdkpath} ${minflag} -O2"
 
-  mkdir -p "$out/include"
-  cp lib/libzstd.a "$out/libzstd.a"
-  cp lib/zstd.h lib/zstd_errors.h lib/zdict.h "$out/include/"
-  echo "[zstd] done → $out/libzstd.a ($(du -h "$out/libzstd.a" | cut -f1))"
+  mkdir -p "$libdir"
+  cp lib/libzstd.a "$libdir/libzstd.a"
+
+  if [ ! -f "$VENDOR/include/zstd.h" ]; then
+    mkdir -p "$VENDOR/include"
+    cp lib/zstd.h lib/zstd_errors.h lib/zdict.h "$VENDOR/include/"
+  fi
+
+  echo "[zstd] done → $libdir/libzstd.a ($(du -h "$libdir/libzstd.a" | cut -f1))"
 }
 
-case "$PLATFORM" in
-  iphoneos)
-    build_one iphoneos iphoneos "-miphoneos-version-min=16.0"
-    ;;
-  iphonesimulator)
-    build_one iphonesimulator iphonesimulator "-miphonesimulator-version-min=16.0"
-    ;;
-  all)
-    build_one iphoneos iphoneos "-miphoneos-version-min=16.0"
-    build_one iphonesimulator iphonesimulator "-miphonesimulator-version-min=16.0"
-    ;;
-  *)
-    echo "unknown platform: $PLATFORM" >&2
-    exit 1
-    ;;
+case "${1:-all}" in
+  iphoneos)          build_one iphoneos iphoneos "-miphoneos-version-min=16.0" ;;
+  iphonesimulator)   build_one iphonesimulator iphonesimulator "-miphonesimulator-version-min=16.0" ;;
+  all)               build_one iphoneos iphoneos "-miphoneos-version-min=16.0"
+                     build_one iphonesimulator iphonesimulator "-miphonesimulator-version-min=16.0" ;;
+  *) echo "unknown platform: $1 (expected iphoneos|iphonesimulator|all)" >&2; exit 1 ;;
 esac

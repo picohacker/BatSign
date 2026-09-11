@@ -19,7 +19,6 @@ struct StoreAppPageView: View {
 
     @State private var storeInfo: AppStoreInfo?
     @State private var downloading = false
-    @State private var progress: Double = 0
     @State private var errorText: String?
     @State private var importedApp: AppRecord?
     @State private var showSignSheet = false
@@ -183,7 +182,7 @@ struct StoreAppPageView: View {
         VStack(spacing: 8) {
             if downloading {
                 VStack(spacing: 8) {
-                    ProgressView(value: progress)
+                    ProgressView()
                         .tint(.batAmber)
                     Text("Downloading \(app.latestVersion?.version ?? "")…")
                         .font(.caption)
@@ -440,7 +439,6 @@ struct StoreAppPageView: View {
     private func downloadAndPrepare() {
         downloading = true
         errorText = nil
-        progress = 0
         Task { @MainActor in
             defer { downloading = false }
             do {
@@ -449,7 +447,9 @@ struct StoreAppPageView: View {
                 importedApp = record
                 try? FileManager.default.removeItem(at: stagedURL)
                 Haptics.success()
-                showSignSheet = true
+                if UserDefaults.standard.bool(forKey: "autoSign") {
+                    showSignSheet = true
+                }
             } catch {
                 errorText = error.localizedDescription
                 Haptics.error()
