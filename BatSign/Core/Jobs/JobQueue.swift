@@ -63,6 +63,8 @@ struct SignOptions: Codable, Hashable {
     var version: String?
     var minVersion: String?
     var entitlementsXML: String?
+    var infoPlistOverridesXML: String?
+    var iconFileName: String?
     var removeExtensions: Bool
     var removeWatch: Bool
     var removeProvision: Bool
@@ -118,10 +120,6 @@ final class JobQueue: ObservableObject {
         (job.status == .succeeded && FileManager.default.fileExists(atPath: job.outputURL.path)) ? job.outputURL : nil
     }
 
-    func isBusy() -> Bool {
-        activeJobID != nil
-    }
-
     // MARK: Enqueueing
 
     /// Main thread only.
@@ -130,7 +128,8 @@ final class JobQueue: ObservableObject {
                  password: String?,
                  adhoc: Bool,
                  options: SignOptions,
-                 dylibs: [URL]) {
+                 dylibs: [URL],
+                 iconURL: URL? = nil) {
         let job = SignJob(id: UUID(),
                           appID: app.id,
                           appName: app.name,
@@ -154,6 +153,17 @@ final class JobQueue: ObservableObject {
             }
             try FileManager.default.copyItem(at: app.fileURL, to: job.inputURL)
 
+            var storedOptions = options
+            if let iconURL {
+                let scoped = iconURL.startAccessingSecurityScopedResource()
+                defer { if scoped { iconURL.stopAccessingSecurityScopedResource() } }
+                let target = job.directory.appendingPathComponent("replacement-icon.png")
+                try FileManager.default.copyItem(at: iconURL, to: target)
+                storedOptions.iconFileName = "replacement-icon.png"
+            } else {
+                storedOptions.iconFileName = nil
+            }
+
             var storedDylibs: [URL] = []
             for (index, dylib) in dylibs.enumerated() {
                 let scoped = dylib.startAccessingSecurityScopedResource()
@@ -163,10 +173,12 @@ final class JobQueue: ObservableObject {
                 storedDylibs.append(target)
             }
 
-            jobs.insert(job, at: 0)
+            var finalJob = job
+            finalJob.options = storedOptions
+            jobs.insert(finalJob, at: 0)
             persist()
             Haptics.success()
-            run(job: job, dylibs: storedDylibs, password: password)
+            run(job: finalJob, dylibs: storedDylibs, password: password)
         } catch {
             NotificationHub.shared.post(kind: .jobFailed,
                                         title: "Could not queue \(app.name)",
@@ -278,12 +290,15 @@ final class JobQueue: ObservableObject {
                 version: options.version,
                 displayName: options.displayName,
                 minVersion: options.minVersion,
+                iconPNG: options.iconFileName.map { original.directory.appendingPathComponent($0) },
+                infoPlistOverridesXML: options.infoPlistOverridesXML,
                 dylibs: dylibs,
                 removeExtensions: options.removeExtensions,
                 removeWatch: options.removeWatch,
                 removeProvision: options.removeProvision,
                 removeSupportedDevices: options.removeSupportedDevices,
-                weakInject: options.weakInject
+                weakInject: options.weakInject,
+                zipLevel: Int32(UserDefaults.standard.integer(forKey: "zipLevel"))
             )
 
             var failure: Error?
@@ -304,6 +319,10 @@ final class JobQueue: ObservableObject {
 
             let finalLog = engineLog.snapshot()
 
+            // The engine signs the app even when dylib injection is impossible
+            // (binary without header space). Detect and surface it honestly.
+            let injectionFailed = finalLog.contains("Can't find free space of LoadCommands")
+
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.activeJobID = nil
@@ -323,13 +342,21 @@ final class JobQueue: ObservableObject {
                         dedupeKey: "job:\(jobID)")
                 } else {
                     fresh.status = .succeeded
-                    fresh.stage = "Signed"
+                    if injectionFailed && !options.dylibNames.isEmpty {
+                        fresh.stage = "Signed · tweak not injected"
+                    } else {
+                        fresh.stage = "Signed"
+                    }
                     self.updateJob(fresh)
                     Haptics.success()
                     NotificationHub.shared.post(
-                        kind: .jobSucceeded,
-                        title: "\(appName) signed",
-                        body: "Ready to install or share.",
+                        kind: injectionFailed && !options.dylibNames.isEmpty ? .jobFailed : .jobSucceeded,
+                        title: injectionFailed && !options.dylibNames.isEmpty
+                            ? "\(appName) signed — tweak NOT injected"
+                            : "\(appName) signed",
+                        body: injectionFailed && !options.dylibNames.isEmpty
+                            ? "The main binary has no free header space for the tweak's load command, so it was signed without it."
+                            : "Ready to install or share.",
                         dedupeKey: "job:\(jobID)")
                 }
             }

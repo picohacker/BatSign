@@ -81,7 +81,9 @@ extern "C" int batsign_sign_ipa(const char* in_ipa,
 								int remove_supported_devices,
 								int enable_documents,
 								int zip_level,
-								const char* temp_folder)
+								const char* temp_folder,
+								const char* icon_png,
+								const char* info_plist_overrides_file)
 {
 	string strIn = safe_str(in_ipa);
 	string strOut = safe_str(out_ipa);
@@ -164,10 +166,94 @@ extern "C" int batsign_sign_ipa(const char* in_ipa,
 		return BATSIGN_ERR_EXTRACT;
 	}
 
+	// 2b. Merge Info.plist overrides before signing.
+	string strPlistOverridesFile = safe_str(info_plist_overrides_file);
+	if (!strPlistOverridesFile.empty()) {
+		string strPatch;
+		if (!ZFile::ReadFile(strPlistOverridesFile.c_str(), strPatch)) {
+			bridge_log("!!! BatSign: Info.plist overrides file unreadable.\n");
+			ZFile::RemoveFolder(strFolder.c_str());
+			return BATSIGN_ERR_ARGS;
+		}
+		jvalue jvPatch;
+		if (!jvPatch.read_plist(strPatch)) {
+			bridge_log("!!! BatSign: Info.plist overrides are not a valid plist.\n");
+			ZFile::RemoveFolder(strFolder.c_str());
+			return BATSIGN_ERR_ARGS;
+		}
+
+		string strInfoPlist;
+		// EnumFolder semantics: filter returning true SKIPS an entry,
+		// callback returning true STOPS the walk.
+		ZFile::EnumFolder(strFolder.c_str(), true,
+			[](bool, const string&) { return false; },
+			[&strInfoPlist](bool bFolder, const string& strPath) -> bool {
+				if (bFolder || !strInfoPlist.empty()) {
+					return false; // keep walking
+				}
+				const string kSuffix = ".app/Info.plist";
+				const string kPayload = "/Payload/";
+				if (strPath.size() <= kSuffix.size()) {
+					return false;
+				}
+				if (0 != strPath.compare(strPath.size() - kSuffix.size(), kSuffix.size(), kSuffix)) {
+					return false;
+				}
+				size_t payloadPos = strPath.find(kPayload);
+				if (string::npos == payloadPos) {
+					return false;
+				}
+				// Only the top-level app bundle: the bundle directory itself
+				// (between Payload/ and ".app") must not contain a slash.
+				size_t bundleStart = payloadPos + kPayload.size();
+				size_t appStart = strPath.size() - kSuffix.size();
+				if (bundleStart >= appStart) {
+					return false;
+				}
+				string dirname = strPath.substr(bundleStart, appStart - bundleStart);
+				if (dirname.empty() || string::npos != dirname.find('/')) {
+					return false;
+				}
+				strInfoPlist = strPath;
+				return true; // found it — stop the walk
+			});
+
+		if (strInfoPlist.empty()) {
+			bridge_log("!!! BatSign: no top-level Payload/<App>.app/Info.plist found for overrides.\n");
+			ZFile::RemoveFolder(strFolder.c_str());
+			return BATSIGN_ERR_PAYLOAD;
+		}
+
+		string strInfo;
+		if (!ZFile::ReadFile(strInfoPlist.c_str(), strInfo)) {
+			bridge_log("!!! BatSign: Info.plist unreadable.\n");
+			ZFile::RemoveFolder(strFolder.c_str());
+			return BATSIGN_ERR_EXTRACT;
+		}
+		jvalue jvInfo;
+		if (!jvInfo.read_plist(strInfo)) {
+			bridge_log("!!! BatSign: Info.plist could not be parsed.\n");
+			ZFile::RemoveFolder(strFolder.c_str());
+			return BATSIGN_ERR_EXTRACT;
+		}
+		vector<string> arrKeys;
+		jvPatch.get_keys(arrKeys);
+		for (const string& strKey : arrKeys) {
+			jvInfo[strKey] = jvPatch[strKey];
+		}
+		if (!jvInfo.style_write_plist_to_file(strInfoPlist.c_str())) {
+			bridge_log("!!! BatSign: failed to write patched Info.plist.\n");
+			ZFile::RemoveFolder(strFolder.c_str());
+			return BATSIGN_ERR_EXTRACT;
+		}
+		bridge_log(">>> Info.plist overrides applied.\n");
+	}
+
 	// 3. Sign (applies metadata changes, injection, removals, then signs all nested code).
 	ZBundle bundle;
 	bundle.m_bEnableDocuments = (0 != enable_documents);
 	bundle.m_strMinVersion = safe_str(min_version);
+	bundle.m_strIconFile = safe_str(icon_png);
 	bundle.m_bRemoveExtensions = (0 != remove_extensions);
 	bundle.m_bRemoveWatchApp = (0 != remove_watch);
 	bundle.m_bRemoveUISupportedDevices = (0 != remove_supported_devices);

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UserDefaults.standard.register(defaults: [
             "preventSleep": true,
             "systemNotifications": true,
+            "zipLevel": 6,
         ])
 
         // Background tasks must be registered before launch finishes.
@@ -57,6 +58,7 @@ struct BatSignApp: App {
     @StateObject private var certManager = CertificateManager()
     @StateObject private var jobQueue = JobQueue()
     @StateObject private var notificationHub = NotificationHub.shared
+    @StateObject private var sourceManager = SourceManager.shared
 
     var body: some Scene {
         WindowGroup {
@@ -66,6 +68,7 @@ struct BatSignApp: App {
                 .environmentObject(certManager)
                 .environmentObject(jobQueue)
                 .environmentObject(notificationHub)
+                .environmentObject(sourceManager)
                 .preferredColorScheme(.dark)
                 .tint(.batAmber)
         }

@@ -27,10 +27,6 @@ struct ProvisionProfile {
         if getTaskAllow { return .development }
         return .distribution
     }
-
-    var displayName: String {
-        applicationIDBundle.isEmpty ? name : "\(applicationIDBundle) · \(name)"
-    }
 }
 
 enum ProfileParser {

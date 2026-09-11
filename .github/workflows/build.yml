@@ -39,11 +39,31 @@ jobs:
       - name: Build OpenSSL for iOS
         run: ./scripts/build-openssl.sh
 
+      - name: Cache zstd (iOS arm64)
+        uses: actions/cache@v4
+        with:
+          path: Vendor/zstd
+          key: zstd-ios64-${{ runner.os }}-${{ hashFiles('scripts/build-zstd.sh') }}
+
+      - name: Build zstd for iOS
+        run: ./scripts/build-zstd.sh
+
       - name: Generate app icon
         run: swift scripts/make-icon.swift
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      - name: Unit tests (iOS simulator)
+        run: |
+          set -o pipefail
+          SIM=$(xcrun simctl list devices available | grep -m1 -E "iPhone" | sed -E 's/^[[:space:]]*([A-Za-z0-9 ()-]+) \(.*/\1/' | xargs)
+          echo "Simulator: $SIM"
+          xcodebuild test -project BatSign.xcodeproj \
+            -scheme BatSign \
+            -destination "platform=iOS Simulator,name=$SIM" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee test.log | tail -25
 
       - name: Compile app (unsigned, device)
         run: |

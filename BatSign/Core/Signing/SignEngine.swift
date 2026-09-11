@@ -18,6 +18,8 @@ struct SignRequest {
     var version: String?
     var displayName: String?
     var minVersion: String?
+    var iconPNG: URL?              // replacement app icon (optional)
+    var infoPlistOverridesXML: String?  // XML plist merged over Info.plist (optional)
     var dylibs: [URL] = []
     var removeExtensions = false
     var removeWatch = false
@@ -90,6 +92,12 @@ enum SignEngine {
             try xml.data(using: .utf8)?.write(to: file, options: [.atomic])
             entitlementsFile = file
         }
+        var plistOverridesFile: URL?
+        if let xml = request.infoPlistOverridesXML, !xml.isEmpty {
+            let file = Paths.temp.appendingPathComponent("plist-overrides-\(UUID().uuidString).xml")
+            try xml.data(using: .utf8)?.write(to: file, options: [.atomic])
+            plistOverridesFile = file
+        }
 
         let input = pool.add(request.inputIPA.path)
         let output = pool.add(request.outputIPA.path)
@@ -102,6 +110,8 @@ enum SignEngine {
         let displayName = pool.add(request.displayName)
         let minVersion = pool.add(request.minVersion)
         let tempFolder = pool.add(Paths.temp.path)
+        let icon = pool.add(request.iconPNG?.path)
+        let plistOverrides = pool.add(plistOverridesFile?.path)
 
         let dylibPointers: [UnsafePointer<CChar>?] = request.dylibs.map { pool.add($0.path) }
 
@@ -120,7 +130,9 @@ enum SignEngine {
             request.removeSupportedDevices ? 1 : 0,
             0, // enable documents (off)
             request.zipLevel,
-            tempFolder
+            tempFolder,
+            icon,
+            plistOverrides
         )
 
         guard result == BATSIGN_OK else {

@@ -5,7 +5,7 @@
 BatSign signs `.ipa` files directly on your iPhone. No servers, no uploads, no accounts:
 your certificates and your apps never leave your device.
 
-> **Status: v1.0.0** — the latest build is compiled automatically by GitHub Actions.
+> **Status: v1.3.0** — the latest build is compiled automatically by GitHub Actions.
 > Grab the unsigned IPA from [Releases](../../releases) or the *Actions → artifacts* tab.
 
 ---
@@ -19,6 +19,10 @@ your certificates and your apps never leave your device.
 | 🧪 **Signing options** | Override display name, bundle ID, version, minimum iOS; strip app extensions / watch apps / embedded profiles / device limits; custom entitlements plist |
 | 📦 **Tweak injection** | Add `.dylib` files to load at launch (weak or normal injection handled by the engine) |
 | 📚 **App library** | Every import is parsed (icon, version, architectures, size, extensions) and re-signable in one tap |
+| 🛍 **Sources + Discover** | Add your own AltStore-format JSON sources and browse apps with App Store-style pages — hero banner, icon, ratings, screenshots and version history (ratings/artwork pulled live from the public App Store lookup API when the app is on it) |
+| 🗂 **Source viewer** | Browse any IPA's real archive contents, preview plists/profiles/images/text, export any file |
+| ➕ **Bulk sign / bulk delete** | Multi-select apps, queue them with one certificate, optional unique bundle-ID suffix |
+| 📦 **.deb tweaks** | Inject tweaks from .deb packages (gzip + zstd via bundled libzstd) or raw .dylibs |
 | 🗞 **Live jobs** | Persistent signing queue with per-job engine log console, stages, durations, re-run on failure |
 | 🔔 **Instant notifications** | Job results and certificate-expiry warnings delivered as local notifications (shown even in-app) and synced to an in-app notification center — deduplicated, never lost across relaunches |
 | ♻️ **Background upkeep** | `BGTaskScheduler` refresh/processing tasks keep certificate checks running while BatSign is away; signing holds a system activity token so your device doesn't sleep mid-job |

@@ -2,19 +2,34 @@
 //  AppsView.swift
 //  BatSign
 //
+//  App library grid with multi-select bulk sign / bulk delete, plus the
+//  per-app detail screen and SignOS-style source browser entry point.
+//
 
 import SwiftUI
-import UniformTypeIdentifiers
+
+/// Distinct navigation value types so app pushes, browse pushes and job
+/// pushes never collide inside one NavigationStack.
+struct AppNavID: Hashable { let id: UUID }
+struct JobNavID: Hashable { let id: UUID }
+struct BrowseNavID: Hashable { let id: UUID }
 
 struct AppsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var library: AppLibrary
     @EnvironmentObject private var jobQueue: JobQueue
     @EnvironmentObject private var certManager: CertificateManager
+    @EnvironmentObject private var notificationHub: NotificationHub
 
     @State private var showImporter = false
     @State private var importError: String?
     @State private var importing = false
+    @State private var sheetApp: AppRecord?
+
+    @State private var selecting = false
+    @State private var selection = Set<UUID>()
+    @State private var confirmBulkDelete = false
+    @State private var showBulkConfig = false
 
     private let columns = [GridItem(.adaptive(minimum: 160), spacing: 14)]
 
@@ -25,27 +40,36 @@ struct AppsView: View {
                            title: "No apps yet",
                            message: "Import an .ipa from the Files app to start your library.")
             } else {
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(library.apps) { app in
-                        NavigationLink(value: AppNavID(id: app.id)) {
-                            AppGridCard(app: app, icon: library.icon(for: app),
-                                        signed: !jobQueue.jobs(forApp: app.id).filter { $0.status == .succeeded }.isEmpty)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(18)
+                grid
+                bulkBar
             }
         }
-        .navigationTitle("Apps")
+        .navigationTitle(selecting ? "\(selection.count) selected" : "Apps")
         .background(.clear)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showImporter = true
+                    if selecting {
+                        selecting = false
+                        selection.removeAll()
+                    } else {
+                        showImporter = true
+                    }
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: selecting ? "xmark" : "plus")
+                }
+                .disabled(importing)
+            }
+            ToolbarItem(placement: .navigation) {
+                if !library.apps.isEmpty {
+                    Button {
+                        selecting.toggle()
+                        if !selecting { selection.removeAll() }
+                        Haptics.tap()
+                    } label: {
+                        Text(selecting ? "Done" : "Select")
+                    }
                 }
             }
         }
@@ -54,25 +78,59 @@ struct AppsView: View {
                 AppDetailView(app: app)
             }
         }
-        .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [ipaType],
-                      allowsMultipleSelection: false) { result in
-            switch result {
-            case .failure(let error): importError = error.localizedDescription
-            case .success(let urls):
+        .navigationDestination(for: BrowseNavID.self) { value in
+            if let app = library.app(with: value.id) {
+                SourceBrowserView(app: app)
+            }
+        }
+        .sheet(isPresented: $showImporter) {
+            DocumentPicker(contentTypes: FileKind.ipa, title: "Import IPA") { urls in
+                showImporter = false
                 guard let url = urls.first else { return }
+                if let problem = FileKind.validateIPA(url) {
+                    importError = problem
+                    return
+                }
                 importing = true
                 Task { @MainActor in
                     defer { importing = false }
                     do {
-                        _ = try await library.importApp(from: url)
+                        let record = try await library.importApp(from: url)
                         Haptics.success()
+                        sheetApp = record
                     } catch {
                         importError = error.localizedDescription
                         Haptics.error()
                     }
                 }
+            } onCancel: {
+                showImporter = false
             }
+            .ignoresSafeArea()
+        }
+        .sheet(item: $sheetApp) { app in
+            SignConfigSheet(app: app)
+        }
+        .sheet(isPresented: $showBulkConfig) {
+            BulkSignConfigSheet(appIDs: Array(selection)) {
+                showBulkConfig = false
+                selecting = false
+                selection.removeAll()
+            }
+        }
+        .confirmationDialog("Delete \(selection.count) app\(selection.count == 1 ? "" : "s") and their files?",
+                            isPresented: $confirmBulkDelete, titleVisibility: .visible) {
+            Button("Delete \(selection.count)", role: .destructive) {
+                for id in selection {
+                    if let app = library.app(with: id) {
+                        library.remove(app)
+                    }
+                }
+                selection.removeAll()
+                selecting = false
+                Haptics.success()
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .alert("Import failed", isPresented: Binding(get: { importError != nil },
                                                      set: { if !$0 { importError = nil } })) {
@@ -82,8 +140,113 @@ struct AppsView: View {
         }
     }
 
-    private var ipaType: UTType {
-        UTType("app.batsign.ipa") ?? UTType(filenameExtension: "ipa") ?? .data
+    // MARK: Grid
+
+    private var grid: some View {
+        LazyVGrid(columns: columns, spacing: 14) {
+            ForEach(library.apps) { app in
+                Button {
+                    if selecting {
+                        toggleSelection(app.id)
+                        Haptics.tap()
+                    }
+                } label: {
+                    AppGridCard(app: app,
+                                icon: library.icon(for: app),
+                                signed: !jobQueue.jobs(forApp: app.id).filter { $0.status == .succeeded }.isEmpty,
+                                selecting: selecting,
+                                selected: selection.contains(app.id))
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button {
+                        selecting = true
+                        selection = [app.id]
+                    } label: {
+                        Label("Select", systemImage: "checkmark.circle")
+                    }
+                }
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                        selecting = true
+                        selection = [app.id]
+                        Haptics.tap()
+                    }
+                )
+                .onTapGesture {
+                    if selecting {
+                        toggleSelection(app.id)
+                        Haptics.tap()
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if selecting {
+                        Image(systemName: selection.contains(app.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(selection.contains(app.id) ? .batAmber : .white.opacity(0.4))
+                            .padding(10)
+                    }
+                }
+                .background(
+                    NavigationLink(value: AppNavID(id: app.id)) { EmptyView() }
+                        .opacity(selecting ? 0 : 1)
+                )
+            }
+        }
+        .padding(18)
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selection.contains(id) {
+            selection.remove(id)
+        } else {
+            selection.insert(id)
+        }
+    }
+
+    // MARK: Bulk bar
+
+    @ViewBuilder
+    private var bulkBar: some View {
+        if selecting && !selection.isEmpty {
+            HStack(spacing: 10) {
+                Button {
+                    guard certManager.certificates.isEmpty == false else { return }
+                    showBulkConfig = true
+                    Haptics.tap()
+                } label: {
+                    Label("Sign \(selection.count)", systemImage: "signature")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color(hex: 0x1A1204))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(LinearGradient(colors: [Color.batAmber, Color.batAmberDeep],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .disabled(certManager.certificates.isEmpty)
+
+                Button {
+                    confirmBulkDelete = true
+                    Haptics.tap()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.danger)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(.danger.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if selecting && certManager.certificates.isEmpty {
+            Text("Import a certificate before bulk signing.")
+                .font(.caption)
+                .foregroundStyle(.batAmber)
+                .padding(.bottom, 6)
+        }
     }
 }
 
@@ -91,6 +254,8 @@ struct AppGridCard: View {
     let app: AppRecord
     let icon: UIImage?
     let signed: Bool
+    var selecting: Bool = false
+    var selected: Bool = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -112,22 +277,144 @@ struct AppGridCard: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity)
-        .glassSurface(cornerRadius: 22, interactive: true)
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(selected ? Color.batAmber : .clear, lineWidth: 2)
+        )
+        .glassSurface(cornerRadius: 22)
     }
 }
 
-/// Distinct navigation value types so app pushes and job pushes never collide.
-struct AppNavID: Hashable { let id: UUID }
-struct JobNavID: Hashable { let id: UUID }
+// MARK: - Bulk sign configuration
+
+struct BulkSignConfigSheet: View {
+    @EnvironmentObject private var certManager: CertificateManager
+    @EnvironmentObject private var jobQueue: JobQueue
+    @EnvironmentObject private var library: AppLibrary
+    @EnvironmentObject private var notificationHub: NotificationHub
+    @Environment(\.dismiss) private var dismiss
+
+    let appIDs: [UUID]
+    var onQueued: (() -> Void)?
+
+    @State private var selectedCertID: UUID?
+    @State private var cloneSuffix = true
+    @State private var removeExtensions = false
+    @State private var removeWatch = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 18) {
+                    VStack(spacing: 6) {
+                        SectionHeader(title: "Certificate")
+                        VStack(spacing: 10) {
+                            ForEach(certManager.certificates) { cert in
+                                Button {
+                                    selectedCertID = cert.id
+                                    Haptics.tap()
+                                } label: {
+                                    CertRow(cert: cert, selected: cert.id == selectedCertID)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    VStack(spacing: 6) {
+                        SectionHeader(title: "Bulk options")
+                        VStack(spacing: 14) {
+                            GlassToggle(title: "Unique bundle ID suffix",
+                                        subtitle: "Appends .bulk-XXXX to each bundle ID so installs don't collide",
+                                        isOn: $cloneSuffix)
+                            Divider().overlay(.white.opacity(0.08))
+                            GlassToggle(title: "Remove app extensions", subtitle: nil, isOn: $removeExtensions)
+                            Divider().overlay(.white.opacity(0.08))
+                            GlassToggle(title: "Remove watch apps", subtitle: nil, isOn: $removeWatch)
+                        }
+                        .padding(14)
+                        .glassSurface(cornerRadius: 22)
+                    }
+
+                    Text("\(appIDs.count) app\(appIDs.count == 1 ? "" : "s") will be queued and signed one by one. Track progress in Jobs.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+
+                    Button {
+                        queueAll()
+                    } label: {
+                        Label("Queue \(appIDs.count) job\(appIDs.count == 1 ? "" : "s")", systemImage: "signature")
+                    }
+                    .buttonStyle(PrimaryGlassButtonStyle())
+                    .disabled(selectedCertID == nil)
+                }
+                .padding(18)
+            }
+            .background(.clear)
+            .navigationTitle("Bulk sign")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .onAppear {
+                if selectedCertID == nil {
+                    selectedCertID = certManager.certificates.first?.id
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func queueAll() {
+        guard let certID = selectedCertID,
+              let cert = certManager.certificate(with: certID) else { return }
+        let password = certManager.password(for: cert)
+        var queued = 0
+        for appID in appIDs {
+            guard let app = library.app(with: appID) else { continue }
+            let bundleID = cloneSuffix ? "\(app.bundleID).bulk-\(String(UUID().uuidString.prefix(4)).lowercased())" : nil
+            let options = SignOptions(
+                bundleID: bundleID,
+                displayName: nil,
+                version: nil,
+                minVersion: nil,
+                entitlementsXML: nil,
+                infoPlistOverridesXML: nil,
+                iconFileName: nil,
+                removeExtensions: removeExtensions,
+                removeWatch: removeWatch,
+                removeProvision: false,
+                removeSupportedDevices: false,
+                weakInject: false,
+                dylibNames: []
+            )
+            jobQueue.enqueue(app: app, cert: cert, password: password,
+                             adhoc: false, options: options, dylibs: [], iconURL: nil)
+            queued += 1
+        }
+        notificationHub.post(kind: .info,
+                             title: "Bulk sign queued",
+                             body: "\(queued) job\(queued == 1 ? "" : "s") queued with \(cert.teamName.isEmpty ? cert.displayName : cert.teamName).",
+                             dedupeKey: "")
+        Haptics.success()
+        onQueued?()
+        dismiss()
+    }
+}
+
+// MARK: - App detail
 
 struct AppDetailView: View {
-    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var library: AppLibrary
     @EnvironmentObject private var jobQueue: JobQueue
     @Environment(\.dismiss) private var dismiss
 
     @State var app: AppRecord
     @State private var confirmDelete = false
+    @State private var showSignSheet = false
 
     var body: some View {
         ScrollView {
@@ -171,6 +458,45 @@ struct AppDetailView: View {
                 .glassSurface(cornerRadius: 22)
 
                 VStack(spacing: 10) {
+                    SectionHeader(title: "Actions")
+                    NavigationLink(value: BrowseNavID(id: app.id)) {
+                        Label("Browse files (source viewer)", systemImage: "folder.badge.gearshape")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    }
+                    .glassSurface(cornerRadius: 18)
+
+                    Button {
+                        showSignSheet = true
+                    } label: {
+                        Label("Sign this app", systemImage: "signature")
+                    }
+                    .buttonStyle(PrimaryGlassButtonStyle())
+
+                    ShareLink(item: app.fileURL) {
+                        Label("Share original .ipa", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    }
+                    .glassSurface(cornerRadius: 18)
+
+                    Button(role: .destructive) {
+                        confirmDelete = true
+                    } label: {
+                        Label("Remove from library", systemImage: "trash")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.danger)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    }
+                    .glassSurface(cornerRadius: 18)
+                }
+
+                VStack(spacing: 10) {
                     SectionHeader(title: "History")
                     if jobQueue.jobs(forApp: app.id).isEmpty {
                         Text("No signing jobs yet.")
@@ -184,35 +510,6 @@ struct AppDetailView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                }
-
-                VStack(spacing: 10) {
-                    Button {
-                        appState.signApp(app.id)
-                    } label: {
-                        Label("Sign this app", systemImage: "signature")
-                    }
-                    .buttonStyle(PrimaryGlassButtonStyle())
-
-                    ShareLink(item: app.fileURL) {
-                        Label("Share original .ipa", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.vertical, 13)
-                    }
-                    .glassSurface(cornerRadius: 18, interactive: true)
-
-                    Button(role: .destructive) {
-                        confirmDelete = true
-                    } label: {
-                        Label("Remove from library", systemImage: "trash")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.danger)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                    }
-                    .glassSurface(cornerRadius: 18, interactive: true)
                 }
             }
             .padding(18)
@@ -230,6 +527,14 @@ struct AppDetailView: View {
         }
         .navigationDestination(for: JobNavID.self) { value in
             JobDetailView(jobID: value.id)
+        }
+        .navigationDestination(for: BrowseNavID.self) { value in
+            if let fresh = library.app(with: value.id) {
+                SourceBrowserView(app: fresh)
+            }
+        }
+        .sheet(isPresented: $showSignSheet) {
+            SignConfigSheet(app: app)
         }
     }
 }

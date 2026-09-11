@@ -22,8 +22,6 @@ extension Color {
 extension ShapeStyle where Self == Color {
     static var batAmber: Color { Color(hex: 0xFFC53D) }
     static var batAmberDeep: Color { Color(hex: 0xFF9F0A) }
-    static var ink: Color { Color(hex: 0xF5F5F7) }
-    static var inkDim: Color { Color.white.opacity(0.62) }
     static var glassStroke: Color { Color.white.opacity(0.14) }
     static var danger: Color { Color(hex: 0xFF5D5D) }
     static var success: Color { Color(hex: 0x4ADE80) }
@@ -33,35 +31,29 @@ extension ShapeStyle where Self == Color {
 
 /// The core Liquid Glass surface. Uses the native `glassEffect` on iOS 26+
 /// and a faithful material/stroke fallback on earlier versions.
+/// Note: `.interactive()` is deliberately NOT used — on custom-tapped rows it
+/// can interfere with hit-testing; the system tab bar gets interactivity for free.
 struct GlassSurface: ViewModifier {
     var cornerRadius: CGFloat = 24
-    var interactive: Bool = false
-    var padding: Bool = true
 
     func body(content: Content) -> some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                if interactive {
-                    content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
-                } else {
-                    content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-                }
-            } else {
-                content
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(Color.glassStroke, lineWidth: 1)
-                    )
-                    .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
-            }
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+        } else {
+            content
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(Color.glassStroke, lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
         }
     }
 }
 
 extension View {
-    func glassSurface(cornerRadius: CGFloat = 24, interactive: Bool = false) -> some View {
-        modifier(GlassSurface(cornerRadius: cornerRadius, interactive: interactive))
+    func glassSurface(cornerRadius: CGFloat = 24) -> some View {
+        modifier(GlassSurface(cornerRadius: cornerRadius))
     }
 }
 

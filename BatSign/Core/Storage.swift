@@ -23,6 +23,7 @@ enum Paths {
     static var jobsIndex: URL { data.appendingPathComponent("jobs.json") }
     static var appsIndex: URL { data.appendingPathComponent("apps.json") }
     static var certsIndex: URL { data.appendingPathComponent("certs.json") }
+    static var sourcesIndex: URL { data.appendingPathComponent("sources.json") }
     static var notificationsStore: URL { data.appendingPathComponent("notifications.json") }
 
     private static func make(_ url: URL) -> URL {

@@ -127,7 +127,7 @@ struct JobRow: View {
             .padding(.leading, 42)
         }
         .padding(14)
-        .glassSurface(cornerRadius: 20, interactive: true)
+        .glassSurface(cornerRadius: 20)
     }
 }
 
@@ -245,7 +245,7 @@ struct JobDetailView: View {
                             .padding(.vertical, 12)
                             .frame(maxWidth: .infinity)
                     }
-                    .glassSurface(cornerRadius: 16, interactive: true)
+                    .glassSurface(cornerRadius: 16)
                 }
             }
             .padding(18)

@@ -29,7 +29,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.batsign.ios
-        MARKETING_VERSION: "1.0.0"
+        MARKETING_VERSION: "1.3.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_OBJC_BRIDGING_HEADER: BatSign/BatSign-Bridging-Header.h
@@ -45,15 +45,29 @@ targets:
           "$(SRCROOT)/Vendor/zsign/src/third-party/zlib"
           "$(SRCROOT)/Vendor/zsign/bridge"
           "$(SRCROOT)/Vendor/openssl/include"
-        LIBRARY_SEARCH_PATHS: "$(SRCROOT)/Vendor/openssl/lib"
-        OTHER_LDFLAGS: "-lcrypto -lz"
+          "$(SRCROOT)/Vendor/zstd/include"
+        LIBRARY_SEARCH_PATHS: >
+          "$(SRCROOT)/Vendor/openssl/lib"
+          "$(SRCROOT)/Vendor/zstd/lib"
+        OTHER_LDFLAGS: "-lcrypto -lz -lzstd"
         DEAD_CODE_STRIPPING: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  BatSignTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/BatSignTests
+    dependencies:
+      - target: BatSign
 
 schemes:
   BatSign:
     build:
       targets:
         BatSign: release
+    test:
+      targets:
+        - BatSignTests
     archive:
       config: Release

@@ -9,15 +9,16 @@ struct RootView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var notificationHub: NotificationHub
     @AppStorage("onboarded") private var onboarded = false
+    @State private var showOnboarding = false
 
     var body: some View {
         ZStack {
             AuroraBackground()
 
             TabView(selection: $appState.selectedTab) {
-                NavigationStack { SignView() }
-                    .tabItem { Label("Sign", systemImage: "signature") }
-                    .tag(AppState.Tab.sign)
+                NavigationStack { DiscoverView() }
+                    .tabItem { Label("Discover", systemImage: "sparkles.rectangle.stack") }
+                    .tag(AppState.Tab.discover)
 
                 NavigationStack { AppsView() }
                     .tabItem { Label("Apps", systemImage: "square.grid.2x2") }
@@ -28,7 +29,7 @@ struct RootView: View {
                     .tag(AppState.Tab.certs)
 
                 NavigationStack { ActivityView() }
-                    .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }
+                    .tabItem { Label("Jobs", systemImage: "waveform.path.ecg") }
                     .badge(notificationHub.unreadCount)
                     .tag(AppState.Tab.activity)
 
@@ -38,7 +39,10 @@ struct RootView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .fullScreenCover(isPresented: Binding(get: { !onboarded }, set: { _ in })) {
+        .onAppear {
+            showOnboarding = !onboarded
+        }
+        .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView()
         }
     }

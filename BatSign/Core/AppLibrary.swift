@@ -60,6 +60,10 @@ final class AppLibrary: ObservableObject {
         persist()
     }
 
+    func app(withBundleID bundleID: String) -> AppRecord? {
+        apps.first { $0.bundleID == bundleID }
+    }
+
     func icon(for record: AppRecord) -> UIImage? {
         UIImage(contentsOfFile: record.iconURL.path)
     }

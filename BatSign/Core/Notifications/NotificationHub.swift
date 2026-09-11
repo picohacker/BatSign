@@ -39,6 +39,9 @@ final class NotificationHub: ObservableObject {
     private let center = UNUserNotificationCenter.current()
 
     private init() {
+        systemDeliveryEnabled = UserDefaults.standard.object(forKey: "systemNotifications") == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: "systemNotifications")
         load()
     }
 

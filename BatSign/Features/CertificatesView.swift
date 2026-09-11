@@ -109,22 +109,36 @@ struct CertificateImportSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .fileImporter(isPresented: $showP12Picker, allowedContentTypes: [p12Type]) { result in
-                handlePick(result) { url in p12URL = url }
+            .sheet(isPresented: $showP12Picker) {
+                DocumentPicker(contentTypes: FileKind.p12, title: "Choose .p12 identity") { urls in
+                    showP12Picker = false
+                    guard let url = urls.first else { return }
+                    if let problem = FileKind.validateP12(url) {
+                        error = problem
+                    } else {
+                        p12URL = url
+                    }
+                } onCancel: {
+                    showP12Picker = false
+                }
+                .ignoresSafeArea()
             }
-            .fileImporter(isPresented: $showProfilePicker, allowedContentTypes: [profileType]) { result in
-                handlePick(result) { url in profileURL = url }
+            .sheet(isPresented: $showProfilePicker) {
+                DocumentPicker(contentTypes: FileKind.profile, title: "Choose provisioning profile") { urls in
+                    showProfilePicker = false
+                    guard let url = urls.first else { return }
+                    if let problem = FileKind.validateProfile(url) {
+                        error = problem
+                    } else {
+                        profileURL = url
+                    }
+                } onCancel: {
+                    showProfilePicker = false
+                }
+                .ignoresSafeArea()
             }
         }
         .preferredColorScheme(.dark)
-    }
-
-    private var p12Type: UTType {
-        UTType(filenameExtension: "p12") ?? .data
-    }
-
-    private var profileType: UTType {
-        UTType(filenameExtension: "mobileprovision") ?? .data
     }
 
     private func fileSlot(title: String, subtitle: String, url: URL?, symbol: String, action: @escaping () -> Void) -> some View {
@@ -150,13 +164,6 @@ struct CertificateImportSheet: View {
         }
         .buttonStyle(.plain)
         .glassSurface(cornerRadius: 20)
-    }
-
-    private func handlePick(_ result: Result<URL, Error>, assign: @escaping (URL) -> Void) {
-        switch result {
-        case .failure(let err): error = err.localizedDescription
-        case .success(let url): assign(url)
-        }
     }
 
     private func importNow() {
@@ -220,7 +227,7 @@ struct CertificateDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
                 }
-                .glassSurface(cornerRadius: 18, interactive: true)
+                .glassSurface(cornerRadius: 18)
             }
             .padding(18)
             .padding(.bottom, 30)
@@ -235,6 +242,10 @@ struct CertificateDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    private var aps: String {
+        (certManager.entitlements(for: cert)["aps-environment"] as? String) ?? ""
     }
 
     private var header: some View {
@@ -275,6 +286,10 @@ struct CertificateDetailView: View {
             InfoRow(label: "Devices", value: cert.kind == .enterprise ? "All (enterprise)" : "\(cert.deviceCount)")
             Divider().overlay(.white.opacity(0.08))
             InfoRow(label: "Profile", value: cert.profileName)
+            if !aps.isEmpty {
+                Divider().overlay(.white.opacity(0.08))
+                InfoRow(label: "Push (APS)", value: aps)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

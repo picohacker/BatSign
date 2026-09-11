@@ -36,6 +36,10 @@ void batsign_set_log_callback(batsign_log_cb cb, void* context);
 /// may be NULL when `adhoc` is non-zero. Optional parameters may be NULL or empty
 /// to leave the app unmodified.
 ///
+/// `icon_png` replaces the app icon (must be a real PNG).
+/// `info_plist_overrides_file` is an XML plist whose top-level keys are merged
+/// into the app's Info.plist before signing.
+///
 /// Returns one of the BATSIGN_* result codes.
 int batsign_sign_ipa(const char* in_ipa,
                      const char* out_ipa,
@@ -57,7 +61,9 @@ int batsign_sign_ipa(const char* in_ipa,
                      int remove_supported_devices,
                      int enable_documents,
                      int zip_level,
-                     const char* temp_folder);
+                     const char* temp_folder,
+                     const char* icon_png,
+                     const char* info_plist_overrides_file);
 
 #ifdef __cplusplus
 }
